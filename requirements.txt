@@ -1,5 +1,7 @@
 streamlit==1.37.1
 pandas==2.2.2
+numpy==1.26.4
 pydantic<2
 spacy==3.7.2
+thinc==8.2.2
 fr_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.7.0/fr_core_news_sm-3.7.0-py3-none-any.whl
