@@ -73,7 +73,6 @@ conn.commit()
 
 # =========================================================
 # QUESTIONS + CORRIGÉ
-# R = Grave, O = Moyen, V = Bénin
 # Justifications : Q2, Q5, Q20
 # =========================================================
 QUESTIONS = [
@@ -263,9 +262,6 @@ QUESTION_MAP = {q["id"]: q for q in QUESTIONS}
 
 # =========================================================
 # IMAGES
-# Mets tes images PNG dans le dossier images/ à la racine du projet.
-# Les fichiers extraits du document incluent notamment image2.png, image3.png,
-# image8.png, image9.png, image10.png, image11.png. Les .emf sont à convertir en PNG.
 # =========================================================
 QUESTION_IMAGES = {
     1: "images/Image1.png",
@@ -280,10 +276,6 @@ QUESTION_IMAGES = {
     10: "images/Image10.png",
     11: "images/Image11.png",
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> 12511ef (update streamlit app)
 
 # =========================================================
 # SESSION
@@ -320,7 +312,7 @@ def get_strengths_and_weaknesses(theme_percentages):
     return strengths, weaknesses
 
 
-def analyze_justification_simple(text: str, keywords: list[str]):
+def analyze_justification_simple(text: str, keywords):
     text_low = (text or "").lower()
     found = [kw for kw in keywords if kw in text_low]
     if len(found) == 0:
@@ -404,8 +396,10 @@ def analyze_submission(nom: str, prenom: str, email: str):
                 error_type = "sur-estimation"
             else:
                 error_type = "réponse invalide ou vide"
+
             if criticality == "high":
                 critical_errors += 1
+
             erreurs_details.append(
                 f"Q{qid}: répondu {user_answer or 'vide'} / attendu {correct_answer} ({error_type})"
             )
@@ -439,7 +433,7 @@ def analyze_submission(nom: str, prenom: str, email: str):
     else:
         profil = "Niveau intermédiaire"
 
-    result_row = {
+    return {
         "nom": nom,
         "prenom": prenom,
         "email": email,
@@ -462,7 +456,6 @@ def analyze_submission(nom: str, prenom: str, email: str):
         "q20_qualite": q20_analysis["quality"],
         "theme_percentages": theme_percentages,
     }
-    return result_row
 
 
 def generate_report(result_row):
@@ -548,8 +541,10 @@ if st.session_state.page == "home":
                 """,
                 conn,
             )
+
             st.markdown("### Connexions")
             st.dataframe(df_sessions, use_container_width=True)
+
             st.markdown("### Résultats")
             st.dataframe(df_results.drop(columns=["rapport"]), use_container_width=True)
 
@@ -566,8 +561,10 @@ if st.session_state.page == "home":
                     ),
                 )
                 selected_row = df_results[df_results["id"] == selected_id].iloc[0]
+
                 with st.expander("Voir le rapport complet", expanded=True):
                     st.text(selected_row["rapport"])
+
                 st.download_button(
                     "Télécharger le rapport sélectionné",
                     data=selected_row["rapport"].encode("utf-8"),
@@ -615,7 +612,7 @@ elif st.session_state.page == "quiz":
 
     image_path = QUESTION_IMAGES.get(qid)
     if image_path and os.path.exists(image_path):
-        st.image(image_path, use_container_width=True)
+        st.image(image_path, use_column_width=True)
     elif image_path:
         st.info(f"Image attendue : {image_path}")
 
@@ -641,6 +638,7 @@ elif st.session_state.page == "quiz":
         st.session_state.justifs[qid] = justif
 
     col1, col2 = st.columns(2)
+
     if qid > 1:
         if col1.button("Précédent", key=f"prev_{qid}"):
             st.session_state.question -= 1
