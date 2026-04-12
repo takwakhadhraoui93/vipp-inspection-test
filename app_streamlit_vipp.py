@@ -280,7 +280,10 @@ QUESTION_IMAGES = {
     10: "images/Image10.png",
     11: "images/Image11.png",
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 12511ef (update streamlit app)
 
 # =========================================================
 # SESSION
