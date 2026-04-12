@@ -2,11 +2,9 @@ import os
 import ssl
 import smtplib
 import sqlite3
-import unicodedata
 from email.message import EmailMessage
 
 import pandas as pd
-import spacy
 import streamlit as st
 
 
@@ -30,93 +28,7 @@ SMTP_PORT = int(get_secret("SMTP_PORT", "465"))
 SMTP_USER = get_secret("SMTP_USER")
 SMTP_PASSWORD = get_secret("SMTP_PASSWORD")
 MAIL_FROM = get_secret("MAIL_FROM", SMTP_USER)
-
 ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "admin123")
-
-
-# =========================================================
-# NLP
-# =========================================================
-@st.cache_resource
-def load_spacy():
-    return spacy.load("fr_core_news_sm")
-
-
-nlp = load_spacy()
-
-
-def strip_accents(text: str) -> str:
-    if not isinstance(text, str):
-        return ""
-    text = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in text if not unicodedata.combining(c))
-
-
-def normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    return strip_accents(str(text).lower().strip())
-
-
-def extract_lemmas(text: str):
-    doc = nlp(normalize_text(text))
-    lemmas = []
-    for token in doc:
-        if token.is_space or token.is_punct or token.is_stop:
-            continue
-        lemma = strip_accents(token.lemma_.lower().strip())
-        if not lemma or lemma in {"etre", "avoir", "faire", "dire"}:
-            continue
-        lemmas.append(lemma)
-    return lemmas
-
-
-def analyze_justification_spacy(text: str, concept_dict: dict):
-    lemmas = extract_lemmas(text)
-    lemma_set = set(lemmas)
-
-    found = []
-    for concept, variants in concept_dict.items():
-        variants_norm = {strip_accents(v.lower()) for v in variants}
-        if lemma_set.intersection(variants_norm):
-            found.append(concept)
-
-    score = len(found)
-    if score == 0:
-        quality = "faible"
-    elif score <= 2:
-        quality = "moyenne"
-    else:
-        quality = "bonne"
-
-    return {
-        "score": score,
-        "concepts": ", ".join(found),
-        "quality": quality,
-        "lemmas": ", ".join(sorted(lemma_set)),
-    }
-
-
-Q2_CONCEPT_DICT = {
-    "profil": ["profil", "longitudinal", "rupture"],
-    "appui": ["appui", "appuis"],
-    "structure": ["structure", "structural", "tablier", "travée"],
-    "gravite": ["grave", "critique", "danger", "alerte"],
-}
-
-Q8_CONCEPT_DICT = {
-    "fissure": ["fissure", "fissuration", "longitudinale"],
-    "precontrainte": ["precontrainte", "cable", "cables", "gaine"],
-    "gravite": ["grave", "critique", "danger", "alerte"],
-    "structure": ["structure", "porteur", "poutre"],
-}
-
-Q30_CONCEPT_DICT = {
-    "beton": ["beton", "degradation", "desagregation"],
-    "gravite": ["grave", "critique", "danger", "alerte"],
-    "evolution": ["evolution", "aggravation", "important"],
-    "structure": ["tablier", "ouvrage", "structure"],
-}
 
 
 # =========================================================
@@ -125,307 +37,222 @@ Q30_CONCEPT_DICT = {
 conn = sqlite3.connect("inspecteurs.db", check_same_thread=False)
 c = conn.cursor()
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS sessions_users(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nom TEXT,
-    prenom TEXT,
-    email TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+c.execute(
+    """
+    CREATE TABLE IF NOT EXISTS sessions_users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT,
+        prenom TEXT,
+        email TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """
 )
-""")
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS resultats(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nom TEXT,
-    prenom TEXT,
-    email TEXT,
-    score INTEGER,
-    total INTEGER,
-    taux_reussite REAL,
-    profil TEXT,
-    erreurs_critiques INTEGER,
-    sous_estimation INTEGER,
-    sur_estimation INTEGER,
-    rapport TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+c.execute(
+    """
+    CREATE TABLE IF NOT EXISTS resultats(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nom TEXT,
+        prenom TEXT,
+        email TEXT,
+        score INTEGER,
+        total INTEGER,
+        taux_reussite REAL,
+        profil TEXT,
+        erreurs_critiques INTEGER,
+        sous_estimation INTEGER,
+        sur_estimation INTEGER,
+        rapport TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """
 )
-""")
 conn.commit()
 
 
 # =========================================================
-# QUESTIONS
-# 3 questions avec justification : Q2, Q8, Q30
+# QUESTIONS + CORRIGÉ
+# R = Grave, O = Moyen, V = Bénin
+# Justifications : Q2, Q5, Q20
 # =========================================================
 QUESTIONS = [
     {
         "id": 1,
-        "theme": "tablier",
-        "title": "Question 1 – Comportement global du tablier",
-        "text": "Vous observez une flèche longitudinale vers le bas sur l’ensemble d’une travée, accompagnée d’une diminution de la contreflèche.",
+        "theme": "fleche_flexion",
+        "title": "Question 1",
+        "text": "Flèche longitudinale vers le bas en travée intéressant l'ensemble de la travée avec des fissure(s) verticale(s) de flexion, s'amorçant en partie basse de la poutre et remontant le plus souvent, située(s) dans la partie centrale de la travée.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": False,
     },
     {
         "id": 2,
-        "theme": "tablier",
-        "title": "Question 2 – Comportement global du tablier",
-        "text": "Une rupture du profil longitudinal est visible au droit d’un appui.",
+        "theme": "affaissement_structurel",
+        "title": "Question 2",
+        "text": "Fissure(s) régnant sur une hauteur pouvant atteindre et dépasser les deux tiers de la hauteur de la poutre, la poutre présentant par ailleurs une cambrure trop faible, voire nulle et même négative : désordre grave indiquant un affaissement structurel anormal.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": True,
     },
     {
         "id": 3,
-        "theme": "tablier",
-        "title": "Question 3 – Comportement global du tablier",
-        "text": "Un déhanché transversal de l’ensemble du tablier est observé.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 4,
-        "theme": "fissures_poutres",
-        "title": "Question 4 – Fissures des poutres",
-        "text": "Une fissure verticale part de l’intrados de la poutre et remonte vers l’âme au centre de la travée.",
+        "theme": "nids_de_cailloux",
+        "title": "Question 3",
+        "text": "Nids de cailloux, dus à un défaut de mise en œuvre du béton (vibration insuffisante) et/ou à une mauvaise formulation (ségrégation), se présentant sous forme de zones superficielles peu étendues ou de défauts plus profonds et/ou étendus pouvant concerner une ou plusieurs poutres.",
         "correct": "Moyen",
         "critical": "medium",
         "requires_justification": False,
     },
     {
-        "id": 5,
-        "theme": "fissures_poutres",
-        "title": "Question 5 – Fissures des poutres",
-        "text": "Des fissures obliques apparaissent près des appuis.",
-        "correct": "Grave",
-        "critical": "high",
+        "id": 4,
+        "theme": "armatures_apparentes",
+        "title": "Question 4",
+        "text": "Armatures passives apparentes sans éclatement du béton, résultant d’un défaut de mise en œuvre (vibration insuffisante, densité d’armatures élevée).",
+        "correct": "Bénin",
+        "critical": "low",
         "requires_justification": False,
     },
     {
+        "id": 5,
+        "theme": "precontrainte_cables",
+        "title": "Question 5",
+        "text": "Fissure(s) suivant le tracé d’un ou de plusieurs câbles, régnant sur tout ou partie de leur longueur, le plus souvent en zone de mi-portée, accompagnées de venue d’eau, de traces de rouille, d’éclatements localisés ou étendus du béton, avec mise à nu d’armatures principales, réduction des sections des armatures actives et/ou rupture de certaines d’entre elles.",
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": True,
+    },
+    {
         "id": 6,
-        "theme": "fissures_poutres",
-        "title": "Question 6 – Fissures des poutres",
-        "text": "Une fissure située à l’about de la poutre remonte depuis le talon.",
+        "theme": "ancrages_precontrainte",
+        "title": "Question 6",
+        "text": "Décollement des cachetages des ancrages des câbles de précontrainte longitudinale, avec venue d’eau, traces de rouille, et éléments de câble visibles, associé à la présence concomitante de fissures verticales de flexion et de fissures obliques proches des zones d’appui, révélateur d’une atteinte possible à l’efficacité des ancrages et à la sécurité structurelle.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": False,
     },
     {
         "id": 7,
-        "theme": "fissures_poutres",
-        "title": "Question 7 – Fissures des poutres",
-        "text": "Une fissure courte apparaît à proximité d’un ancrage de câble de précontrainte.",
+        "theme": "eclatement_generalise",
+        "title": "Question 7",
+        "text": "Éclatement, d’écoulement du béton généralisés avec désenrobage des armatures sur des surfaces importantes et réduction de leurs sections, jusqu'à la rupture de certaines d'entre elles et/ou pour les hourdis précontraints, avec réduction notable des sections des armatures actives apparentes voire rupture de certaines d'entre elles.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": False,
     },
     {
         "id": 8,
-        "theme": "precontrainte",
-        "title": "Question 8 – Fissures des poutres",
-        "text": "Une fissure longitudinale suit le tracé d’un câble de précontrainte sur une grande longueur.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": True,
-    },
-    {
-        "id": 9,
-        "theme": "fissures_poutres",
-        "title": "Question 9 – Fissures des poutres",
-        "text": "Une fracture horizontale du talon de la poutre s’étend sur plusieurs mètres.",
+        "theme": "cachetage_ancrages",
+        "title": "Question 8",
+        "text": "Décollement des cachetages des ancrages de précontrainte, avec eau, efflorescences associées à des fissures verticales et obliques proches des zones sur appui.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": False,
     },
     {
-        "id": 10,
-        "theme": "fissures_poutres",
-        "title": "Question 10 – Fissures des poutres",
-        "text": "Des fissures apparaissent à la jonction entre l’âme de la poutre et le hourdis.",
+        "id": 9,
+        "theme": "ecaillage",
+        "title": "Question 9",
+        "text": "Écaillage du béton se traduisant par un décollement du mortier de peau laissant apparaître les granulats, dû à des sollicitations mécaniques excessives, à l’action du gel, à l’agressivité du milieu (attaque chimique) et/ou à une mauvaise qualité du béton.",
         "correct": "Moyen",
         "critical": "medium",
         "requires_justification": False,
     },
     {
+        "id": 10,
+        "theme": "entretoise_precontrainte",
+        "title": "Question 10",
+        "text": "Lacunes de béton en sous-face ou en parement vertical d'une entretoise précontrainte avec réduction des sections des armatures actives et/ou rupture de certaines d'entre elles.",
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": False,
+    },
+    {
         "id": 11,
-        "theme": "defauts_poutres",
-        "title": "Question 11 – Défauts des poutres",
-        "text": "Un éclatement vertical de l’âme avec armatures apparentes est observé.",
+        "theme": "alcali_reaction",
+        "title": "Question 11",
+        "text": "Maillage régulier de fissures traduisant le développement d’une alcali-réaction, dans un environnement agressif, avec une intensité de fissuration importante et des répercussions notables sur le fonctionnement mécanique de l’ouvrage ; dans le cas des ouvrages en béton précontraint, ce maillage peut évoluer vers une fissuration orientée parallèlement aux efforts de compression.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": False,
     },
     {
         "id": 12,
-        "theme": "defauts_poutres",
-        "title": "Question 12 – Défauts des poutres",
-        "text": "Des épaufrures apparaissent sur la poutre au niveau des zones de levage.",
+        "theme": "cachetages_transversaux",
+        "title": "Question 12",
+        "text": "Décollements des cachetages des ancrages des câbles de précontrainte transversale sans venue d’eau.",
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+    },
+    {
+        "id": 13,
+        "theme": "entretoise_fissures",
+        "title": "Question 13",
+        "text": "Fissurations obliques diverses de type XXII sur entretoise, verticales ou inclinées, cas d’une entretoise en béton armé : fissures plus nombreuses et/ou d’ouverture supérieure à 0,3 mm.",
         "correct": "Moyen",
         "critical": "medium",
         "requires_justification": False,
     },
     {
-        "id": 13,
-        "theme": "defauts_poutres",
-        "title": "Question 13 – Défauts des poutres",
-        "text": "Le cachetage d’un ancrage de câble de précontrainte est décollé.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
         "id": 14,
-        "theme": "defauts_poutres",
-        "title": "Question 14 – Défauts des poutres",
-        "text": "Des lacunes de béton avec mise à nu d’armatures sont observées sur la poutre.",
-        "correct": "Grave",
-        "critical": "high",
+        "theme": "profil_longitudinal",
+        "title": "Question 14",
+        "text": "Rupture du profil longitudinal du tablier au droit d’un ou plusieurs appuis, résultant des déformations différées du béton (fluage) et/ou d’une mauvaise maîtrise des contreflèches.",
+        "correct": "Moyen",
+        "critical": "medium",
         "requires_justification": False,
     },
     {
         "id": 15,
-        "theme": "hourdis",
-        "title": "Question 15 – Hourdis",
-        "text": "Des fissures transversales apparaissent dans le hourdis au droit des câbles de précontrainte.",
+        "theme": "lacunes_beton",
+        "title": "Question 15",
+        "text": "Les lacunes de béton correspondent à des défauts localisés de compacité se traduisant par des vides et une texture ouverte ; dans le cas 9.2, elles sont plus profondes, mettent à nu les armatures (passives et/ou de précontrainte) sans toutefois entraîner de réduction notable de leur section.",
         "correct": "Moyen",
         "critical": "medium",
         "requires_justification": False,
     },
     {
         "id": 16,
-        "theme": "hourdis",
-        "title": "Question 16 – Hourdis",
-        "text": "Une fissuration oblique en arêtes de poisson apparaît près des abouts des poutres.",
-        "correct": "Grave",
-        "critical": "high",
+        "theme": "cachetage_sec",
+        "title": "Question 16",
+        "text": "Décollement des cachetages au droit des ancrages des câbles de précontrainte, sans trace d’humidité (état sec), dû à une mauvaise adhérence du matériau de cachetage et/ou à un retrait excessif lors de sa mise en œuvre.",
+        "correct": "Bénin",
+        "critical": "low",
         "requires_justification": False,
     },
     {
         "id": 17,
-        "theme": "hourdis",
-        "title": "Question 17 – Hourdis",
-        "text": "Une fissure longitudinale apparaît au niveau d’une reprise de bétonnage entre poutre et hourdis.",
+        "theme": "lacunes_superficielles",
+        "title": "Question 17",
+        "text": "Lacunes superficielles de béton en sous-face ou en parement vertical d’une entretoise précontrainte, sans mise à nu des armatures, dues à un défaut de mise en œuvre (vibration insuffisante, forte densité d’armatures) et/ou à une formulation inadaptée du béton.",
         "correct": "Moyen",
         "critical": "medium",
         "requires_justification": False,
     },
     {
         "id": 18,
-        "theme": "hourdis",
-        "title": "Question 18 – Hourdis",
-        "text": "Des fissures nombreuses apparaissent dans le hourdis avec infiltration d’eau.",
-        "correct": "Grave",
-        "critical": "high",
+        "theme": "epaufrures_poutre",
+        "title": "Question 18",
+        "text": "Épaufrures du béton aux angles inférieurs d’une poutre, résultant de chocs (manutention en phase de construction et/ou impacts de véhicules hors gabarit), avec déchirure des conduits de câbles de précontrainte sans atteinte des câbles eux-mêmes.",
+        "correct": "Moyen",
+        "critical": "medium",
         "requires_justification": False,
     },
     {
         "id": 19,
-        "theme": "hourdis",
-        "title": "Question 19 – Hourdis",
-        "text": "Un éclatement du béton du hourdis avec armatures visibles est observé.",
-        "correct": "Grave",
-        "critical": "high",
+        "theme": "entretoise_eclatement",
+        "title": "Question 19",
+        "text": "Éclatement localisé du béton à l’angle inférieur d’une entretoise, avec mise à nu d’armatures passives présentant une réduction importante de section, dû à la poussée exercée par l’oxydation des aciers sur le béton d’enrobage.",
+        "correct": "Moyen",
+        "critical": "medium",
         "requires_justification": False,
     },
     {
         "id": 20,
-        "theme": "hourdis",
-        "title": "Question 20 – Hourdis",
-        "text": "Des traces de circulation d’eau apparaissent en sous-face du hourdis avec stalactites de calcite.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 21,
-        "theme": "entretoises",
-        "title": "Question 21 – Entretoises",
-        "text": "Une fissure apparaît au droit d’une reprise de bétonnage dans une entretoise.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 22,
-        "theme": "entretoises",
-        "title": "Question 22 – Entretoises",
-        "text": "Des fissures obliques apparaissent dans une entretoise.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 23,
-        "theme": "entretoises",
-        "title": "Question 23 – Entretoises",
-        "text": "Un éclatement du béton d’une entretoise avec armatures visibles est observé.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 24,
-        "theme": "beton",
-        "title": "Question 24 – Défauts du béton",
-        "text": "Des épaufrures apparaissent aux angles inférieurs d’une poutre suite à un choc.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 25,
-        "theme": "beton",
-        "title": "Question 25 – Défauts du béton",
-        "text": "Des nids de cailloux sont observés dans une poutre.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 26,
-        "theme": "beton",
-        "title": "Question 26 – Défauts du béton",
-        "text": "Des fuites de laitance apparaissent au niveau des joints de coffrage.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 27,
-        "theme": "beton",
-        "title": "Question 27 – Défauts du béton",
-        "text": "Une ségrégation du béton est observée sur un parement de poutre.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 28,
-        "theme": "beton",
-        "title": "Question 28 – Défauts du béton",
-        "text": "Un faïençage superficiel apparaît sur le béton du tablier.",
-        "correct": "Bénin",
-        "critical": "low",
-        "requires_justification": False,
-    },
-    {
-        "id": 29,
-        "theme": "beton",
-        "title": "Question 29 – Défauts du béton",
-        "text": "Un maillage régulier de fissures apparaît dans le béton.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 30,
-        "theme": "beton",
-        "title": "Question 30 – Défauts du béton",
-        "text": "Une désagrégation importante du béton est observée sur le tablier.",
+        "theme": "desagregation",
+        "title": "Question 20",
+        "text": "Désagrégation du béton se traduisant par une destruction en profondeur, étendue, due à une mauvaise qualité du béton et/ou à l'action du gel et/ou à l'agressivité du milieu environnant (attaque chimique), compromettant la durabilité et la capacité portante de l’élément.",
         "correct": "Grave",
         "critical": "high",
         "requires_justification": True,
@@ -434,25 +261,40 @@ QUESTIONS = [
 
 QUESTION_MAP = {q["id"]: q for q in QUESTIONS}
 
+# =========================================================
+# IMAGES
+# Mets tes images PNG dans le dossier images/ à la racine du projet.
+# Les fichiers extraits du document incluent notamment image2.png, image3.png,
+# image8.png, image9.png, image10.png, image11.png. Les .emf sont à convertir en PNG.
+# =========================================================
+QUESTION_IMAGES = {
+    1: "images/Image1.png",
+    2: "images/Image2.png",
+    3: "images/Image3.png",
+    4: "images/Image4.png",
+    5: "images/Image5.png",
+    6: "images/Image6.png",
+    7: "images/Image7.png",
+    8: "images/Image8.png",
+    9: "images/Image9.png",
+    10: "images/Image10.png",
+    11: "images/Image11.png",
+}
+
 
 # =========================================================
 # SESSION
 # =========================================================
 if "page" not in st.session_state:
     st.session_state.page = "home"
-
 if "question" not in st.session_state:
     st.session_state.question = 1
-
 if "answers" not in st.session_state:
     st.session_state.answers = {}
-
 if "justifs" not in st.session_state:
     st.session_state.justifs = {}
-
 if "result_saved" not in st.session_state:
     st.session_state.result_saved = False
-
 if "mail_sent" not in st.session_state:
     st.session_state.mail_sent = False
 
@@ -467,28 +309,42 @@ def answer_order(value: str) -> int:
 def get_strengths_and_weaknesses(theme_percentages):
     strengths = []
     weaknesses = []
-
     for theme, value in theme_percentages.items():
         if value >= 75:
             strengths.append(theme)
         elif value < 50:
             weaknesses.append(theme)
-
     return strengths, weaknesses
+
+
+def analyze_justification_simple(text: str, keywords: list[str]):
+    text_low = (text or "").lower()
+    found = [kw for kw in keywords if kw in text_low]
+    if len(found) == 0:
+        quality = "faible"
+    elif len(found) <= 2:
+        quality = "moyenne"
+    else:
+        quality = "bonne"
+    return {
+        "score": len(found),
+        "concepts": ", ".join(found),
+        "quality": quality,
+    }
 
 
 def generate_recommendation(result_row):
     critical_errors = result_row.get("erreurs_critiques", 0)
     under = result_row.get("sous_estimation", 0)
     q2_quality = result_row.get("q2_qualite", "")
-    q8_quality = result_row.get("q8_qualite", "")
-    q30_quality = result_row.get("q30_qualite", "")
+    q5_quality = result_row.get("q5_qualite", "")
+    q20_quality = result_row.get("q20_qualite", "")
 
     if critical_errors >= 3:
         return "Une formation prioritaire sur l'identification des situations graves et des signaux d’alerte est recommandée."
-    if under >= 5:
+    if under >= 4:
         return "Une sensibilisation au risque de sous-estimation des désordres structurels est recommandée."
-    if q2_quality == "faible" or q8_quality == "faible" or q30_quality == "faible":
+    if q2_quality == "faible" or q5_quality == "faible" or q20_quality == "faible":
         return "Un renforcement du raisonnement technique écrit est recommandé sur les cas critiques."
     if result_row.get("taux_reussite", 0) >= 80:
         return "Le niveau est satisfaisant. Un maintien des acquis par retour d’expérience est recommandé."
@@ -497,7 +353,7 @@ def generate_recommendation(result_row):
 
 def send_report_email(to_email: str, subject: str, body: str):
     if not (SMTP_HOST and SMTP_PORT and SMTP_USER and SMTP_PASSWORD and MAIL_FROM):
-        raise RuntimeError("Configuration SMTP incomplète.")
+        raise RuntimeError("Configuration email incomplète.")
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -537,7 +393,6 @@ def analyze_submission(nom: str, prenom: str, email: str):
         else:
             u = answer_order(user_answer)
             c_ = answer_order(correct_answer)
-
             if u < c_:
                 under_estimation += 1
                 error_type = "sous-estimation"
@@ -546,43 +401,40 @@ def analyze_submission(nom: str, prenom: str, email: str):
                 error_type = "sur-estimation"
             else:
                 error_type = "réponse invalide ou vide"
-
             if criticality == "high":
                 critical_errors += 1
-
             erreurs_details.append(
                 f"Q{qid}: répondu {user_answer or 'vide'} / attendu {correct_answer} ({error_type})"
             )
 
-    q2_analysis = analyze_justification_spacy(st.session_state.justifs.get(2, ""), Q2_CONCEPT_DICT)
-    q8_analysis = analyze_justification_spacy(st.session_state.justifs.get(8, ""), Q8_CONCEPT_DICT)
-    q30_analysis = analyze_justification_spacy(st.session_state.justifs.get(30, ""), Q30_CONCEPT_DICT)
+    q2_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(2, ""),
+        ["fissure", "cambrure", "affaissement", "grave", "structure", "poutre"],
+    )
+    q5_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(5, ""),
+        ["cable", "precontrainte", "rouille", "eau", "eclatement", "grave"],
+    )
+    q20_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(20, ""),
+        ["desagregation", "beton", "gel", "attaque chimique", "grave", "portante"],
+    )
 
     theme_percentages = {}
     for theme, stats in theme_scores.items():
         pct = round((stats["correct"] / stats["total"]) * 100, 2) if stats["total"] > 0 else 0.0
         theme_percentages[theme] = pct
 
-    if score >= 24 and critical_errors <= 1:
+    if score >= 16 and critical_errors <= 1:
         profil = "Bon niveau global"
     elif critical_errors >= 3:
         profil = "Faiblesse sur les situations graves"
-    elif under_estimation >= 5:
+    elif under_estimation >= 4:
         profil = "Tendance à sous-estimer la gravité"
-    elif over_estimation >= 5:
+    elif over_estimation >= 4:
         profil = "Tendance à sur-estimer la gravité"
     else:
         profil = "Niveau intermédiaire"
-
-    commentaire = (
-        f"Score {score}/{total}. "
-        f"Erreurs critiques : {critical_errors}. "
-        f"Sous-estimations : {under_estimation}. "
-        f"Sur-estimations : {over_estimation}. "
-        f"Justification Q2 : {q2_analysis['quality']}. "
-        f"Justification Q8 : {q8_analysis['quality']}. "
-        f"Justification Q30 : {q30_analysis['quality']}."
-    )
 
     result_row = {
         "nom": nom,
@@ -595,17 +447,16 @@ def analyze_submission(nom: str, prenom: str, email: str):
         "sur_estimation": over_estimation,
         "erreurs_critiques": critical_errors,
         "profil": profil,
-        "commentaire_auto": commentaire,
         "details_erreurs": " | ".join(erreurs_details),
         "q2_nlp_score": q2_analysis["score"],
         "q2_concepts": q2_analysis["concepts"],
         "q2_qualite": q2_analysis["quality"],
-        "q8_nlp_score": q8_analysis["score"],
-        "q8_concepts": q8_analysis["concepts"],
-        "q8_qualite": q8_analysis["quality"],
-        "q30_nlp_score": q30_analysis["score"],
-        "q30_concepts": q30_analysis["concepts"],
-        "q30_qualite": q30_analysis["quality"],
+        "q5_nlp_score": q5_analysis["score"],
+        "q5_concepts": q5_analysis["concepts"],
+        "q5_qualite": q5_analysis["quality"],
+        "q20_nlp_score": q20_analysis["score"],
+        "q20_concepts": q20_analysis["concepts"],
+        "q20_qualite": q20_analysis["quality"],
         "theme_percentages": theme_percentages,
     }
     return result_row
@@ -613,7 +464,6 @@ def analyze_submission(nom: str, prenom: str, email: str):
 
 def generate_report(result_row):
     strengths, weaknesses = get_strengths_and_weaknesses(result_row["theme_percentages"])
-
     strengths_text = ", ".join(strengths) if strengths else "Aucun point fort nettement dominant identifié."
     weaknesses_text = ", ".join(weaknesses) if weaknesses else "Aucune faiblesse majeure détectée."
 
@@ -653,7 +503,6 @@ Points faibles : {weaknesses_text}
 if st.session_state.page == "home":
     st.title("Questionnaire de validation des connaissances")
     st.subheader("Inspecteurs d’ouvrages d’art – Ponts VIPP")
-
     menu = st.sidebar.radio("Menu", ["Connexion", "Admin"])
 
     if menu == "Connexion":
@@ -672,13 +521,11 @@ if st.session_state.page == "home":
                 st.session_state.prenom = prenom
                 st.session_state.email = email
                 st.session_state.page = "accueil"
-
                 c.execute(
                     "INSERT INTO sessions_users(nom, prenom, email) VALUES (?, ?, ?)",
                     (nom, prenom, email),
                 )
                 conn.commit()
-
                 st.rerun()
 
     elif menu == "Admin":
@@ -698,15 +545,10 @@ if st.session_state.page == "home":
                 """,
                 conn,
             )
-
             st.markdown("### Connexions")
             st.dataframe(df_sessions, use_container_width=True)
-
             st.markdown("### Résultats")
-            st.dataframe(
-                df_results.drop(columns=["rapport"]),
-                use_container_width=True
-            )
+            st.dataframe(df_results.drop(columns=["rapport"]), use_container_width=True)
 
             if not df_results.empty:
                 st.markdown("### Consulter un rapport")
@@ -714,19 +556,15 @@ if st.session_state.page == "home":
                     "Choisir un résultat",
                     df_results["id"].tolist(),
                     format_func=lambda x: (
-                        f"ID {x} - "
-                        f"{df_results[df_results['id'] == x]['prenom'].iloc[0]} "
+                        f"ID {x} - {df_results[df_results['id'] == x]['prenom'].iloc[0]} "
                         f"{df_results[df_results['id'] == x]['nom'].iloc[0]} - "
                         f"Score {df_results[df_results['id'] == x]['score'].iloc[0]}/"
                         f"{df_results[df_results['id'] == x]['total'].iloc[0]}"
-                    )
+                    ),
                 )
-
                 selected_row = df_results[df_results["id"] == selected_id].iloc[0]
-
                 with st.expander("Voir le rapport complet", expanded=True):
                     st.text(selected_row["rapport"])
-
                 st.download_button(
                     "Télécharger le rapport sélectionné",
                     data=selected_row["rapport"].encode("utf-8"),
@@ -767,10 +605,16 @@ elif st.session_state.page == "quiz":
     qid = st.session_state.question
     q = QUESTION_MAP[qid]
 
-    st.title(f"Question {qid} / 30")
-    st.progress(qid / 30)
+    st.title(f"Question {qid} / {len(QUESTIONS)}")
+    st.progress(qid / len(QUESTIONS))
     st.markdown(f"### {q['title']}")
     st.write(q["text"])
+
+    image_path = QUESTION_IMAGES.get(qid)
+    if image_path and os.path.exists(image_path):
+        st.image(image_path, use_container_width=True)
+    elif image_path:
+        st.info(f"Image attendue : {image_path}")
 
     options = ["Grave", "Moyen", "Bénin"]
     current_answer = st.session_state.answers.get(qid, "Grave")
@@ -779,9 +623,8 @@ elif st.session_state.page == "quiz":
         "Choisir la gravité",
         options,
         index=options.index(current_answer),
-        key=f"q_{qid}_radio"
+        key=f"q_{qid}_radio",
     )
-
     st.session_state.answers[qid] = selected
 
     if q["requires_justification"]:
@@ -790,22 +633,21 @@ elif st.session_state.page == "quiz":
             "Justification obligatoire",
             value=justif_default,
             key=f"q_{qid}_justif",
-            placeholder="Expliquez brièvement votre diagnostic."
+            placeholder="Expliquez brièvement votre diagnostic.",
         )
         st.session_state.justifs[qid] = justif
 
     col1, col2 = st.columns(2)
-
     if qid > 1:
         if col1.button("Précédent", key=f"prev_{qid}"):
             st.session_state.question -= 1
             st.rerun()
 
-    if col2.button("Suivant" if qid < 30 else "Terminer", key=f"next_{qid}"):
+    if col2.button("Suivant" if qid < len(QUESTIONS) else "Terminer", key=f"next_{qid}"):
         if q["requires_justification"] and not st.session_state.justifs.get(qid, "").strip():
             st.error("La justification est obligatoire pour cette question.")
         else:
-            if qid < 30:
+            if qid < len(QUESTIONS):
                 st.session_state.question += 1
                 st.rerun()
             else:
@@ -827,8 +669,7 @@ elif st.session_state.page == "result":
     report_text = generate_report(result_row)
 
     st.subheader(f"Score : {result_row['score']} / {result_row['total']}")
-
-    if result_row["score"] >= 24:
+    if result_row["score"] >= 16:
         st.success("Employé apte à sortir en terrain")
     else:
         st.error("Employé non apte – formation requise")
