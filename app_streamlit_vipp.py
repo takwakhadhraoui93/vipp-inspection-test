@@ -73,188 +73,314 @@ conn.commit()
 
 # =========================================================
 # QUESTIONS + CORRIGÉ
-# Justifications : Q2, Q5, Q20
 # =========================================================
 QUESTIONS = [
+    # --- POUTRES ---
     {
         "id": 1,
-        "theme": "fleche_flexion",
+        "theme": "poutres",
         "title": "Question 1",
-        "text": "Flèche longitudinale vers le bas en travée intéressant l'ensemble de la travée avec des fissure(s) verticale(s) de flexion, s'amorçant en partie basse de la poutre et remontant le plus souvent, située(s) dans la partie centrale de la travée.",
+        "text": (
+            "Fissure(s) régnant sur une hauteur pouvant atteindre et dépasser les deux tiers de la hauteur "
+            "de la poutre, la poutre présentant par ailleurs une cambrure trop faible, voire nulle et même négative."
+        ),
         "correct": "Grave",
         "critical": "high",
-        "requires_justification": False,
+        "requires_justification": True,
+        "has_image": True,
+        "alerte": True,
     },
     {
         "id": 2,
-        "theme": "affaissement_structurel",
+        "theme": "poutres",
         "title": "Question 2",
-        "text": "Fissure(s) régnant sur une hauteur pouvant atteindre et dépasser les deux tiers de la hauteur de la poutre, la poutre présentant par ailleurs une cambrure trop faible, voire nulle et même négative : désordre grave indiquant un affaissement structurel anormal.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": True,
+        "text": (
+            "Fissuration avec éclatement vertical d'une âme, de type IX, au droit des armatures transversales, "
+            "due à un enrobage insuffisant de celles-ci, sans trace de rouille ni éclatement du béton."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
     },
     {
         "id": 3,
-        "theme": "nids_de_cailloux",
+        "theme": "poutres",
         "title": "Question 3",
-        "text": "Nids de cailloux, dus à un défaut de mise en œuvre du béton (vibration insuffisante) et/ou à une mauvaise formulation (ségrégation), se présentant sous forme de zones superficielles peu étendues ou de défauts plus profonds et/ou étendus pouvant concerner une ou plusieurs poutres.",
-        "correct": "Moyen",
-        "critical": "medium",
+        "text": (
+            "Fissure(s) longitudinale(s) de type V, suivant le tracé d'un câble sur tout ou partie de sa longueur, "
+            "le plus souvent en zone de mi-portée, sèche(s) et fine(s) le long d'un seul câble, "
+            "d'ouverture inférieure à 0,3 mm."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
         "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
     },
     {
         "id": 4,
-        "theme": "armatures_apparentes",
+        "theme": "poutres",
         "title": "Question 4",
-        "text": "Armatures passives apparentes sans éclatement du béton, résultant d’un défaut de mise en œuvre (vibration insuffisante, densité d’armatures élevée).",
-        "correct": "Bénin",
-        "critical": "low",
-        "requires_justification": False,
+        "text": (
+            "Fracture horizontale du talon de type VII, pouvant régner sur plusieurs mètres dans la partie centrale "
+            "de la travée, pouvant être accompagnée d'un rejet horizontal, due à une ou plusieurs des causes cumulées "
+            "suivantes : cadres de couture de talons insuffisants, effet de poussée dû au gel de l'eau circulant dans "
+            "des câbles mal injectés, poussée d'expansion par la rouille due à la corrosion d'armatures passives, "
+            "des conduits et peut-être même des câbles de précontrainte."
+        ),
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": True,
+        "has_image": True,
+        "alerte": True,
     },
     {
         "id": 5,
-        "theme": "precontrainte_cables",
+        "theme": "poutres",
         "title": "Question 5",
-        "text": "Fissure(s) suivant le tracé d’un ou de plusieurs câbles, régnant sur tout ou partie de leur longueur, le plus souvent en zone de mi-portée, accompagnées de venue d’eau, de traces de rouille, d’éclatements localisés ou étendus du béton, avec mise à nu d’armatures principales, réduction des sections des armatures actives et/ou rupture de certaines d’entre elles.",
+        "text": (
+            "Décollements des cachetages des ancrages des câbles de précontrainte longitudinale, avec venue d'eau "
+            "et/ou accompagnés d'efflorescences et/ou avec traces de rouille, à la limite ancrage ou éléments de câble "
+            "visibles, en présence concomitante de fissures de type I (Q.1) et II (Q.6)."
+        ),
         "correct": "Grave",
         "critical": "high",
         "requires_justification": True,
+        "has_image": True,
+        "alerte": True,
     },
     {
         "id": 6,
-        "theme": "ancrages_precontrainte",
+        "theme": "poutres",
         "title": "Question 6",
-        "text": "Décollement des cachetages des ancrages des câbles de précontrainte longitudinale, avec venue d’eau, traces de rouille, et éléments de câble visibles, associé à la présence concomitante de fissures verticales de flexion et de fissures obliques proches des zones d’appui, révélateur d’une atteinte possible à l’efficacité des ancrages et à la sécurité structurelle.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 7,
-        "theme": "eclatement_generalise",
-        "title": "Question 7",
-        "text": "Éclatement, d’écoulement du béton généralisés avec désenrobage des armatures sur des surfaces importantes et réduction de leurs sections, jusqu'à la rupture de certaines d'entre elles et/ou pour les hourdis précontraints, avec réduction notable des sections des armatures actives apparentes voire rupture de certaines d'entre elles.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 8,
-        "theme": "cachetage_ancrages",
-        "title": "Question 8",
-        "text": "Décollement des cachetages des ancrages de précontrainte, avec eau, efflorescences associées à des fissures verticales et obliques proches des zones sur appui.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 9,
-        "theme": "ecaillage",
-        "title": "Question 9",
-        "text": "Écaillage du béton se traduisant par un décollement du mortier de peau laissant apparaître les granulats, dû à des sollicitations mécaniques excessives, à l’action du gel, à l’agressivité du milieu (attaque chimique) et/ou à une mauvaise qualité du béton.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 10,
-        "theme": "entretoise_precontrainte",
-        "title": "Question 10",
-        "text": "Lacunes de béton en sous-face ou en parement vertical d'une entretoise précontrainte avec réduction des sections des armatures actives et/ou rupture de certaines d'entre elles.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 11,
-        "theme": "alcali_reaction",
-        "title": "Question 11",
-        "text": "Maillage régulier de fissures traduisant le développement d’une alcali-réaction, dans un environnement agressif, avec une intensité de fissuration importante et des répercussions notables sur le fonctionnement mécanique de l’ouvrage ; dans le cas des ouvrages en béton précontraint, ce maillage peut évoluer vers une fissuration orientée parallèlement aux efforts de compression.",
-        "correct": "Grave",
-        "critical": "high",
-        "requires_justification": False,
-    },
-    {
-        "id": 12,
-        "theme": "cachetages_transversaux",
-        "title": "Question 12",
-        "text": "Décollements des cachetages des ancrages des câbles de précontrainte transversale sans venue d’eau.",
-        "correct": "Bénin",
-        "critical": "low",
-        "requires_justification": False,
-    },
-    {
-        "id": 13,
-        "theme": "entretoise_fissures",
-        "title": "Question 13",
-        "text": "Fissurations obliques diverses de type XXII sur entretoise, verticales ou inclinées, cas d’une entretoise en béton armé : fissures plus nombreuses et/ou d’ouverture supérieure à 0,3 mm.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 14,
-        "theme": "profil_longitudinal",
-        "title": "Question 14",
-        "text": "Rupture du profil longitudinal du tablier au droit d’un ou plusieurs appuis, résultant des déformations différées du béton (fluage) et/ou d’une mauvaise maîtrise des contreflèches.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 15,
-        "theme": "lacunes_beton",
-        "title": "Question 15",
-        "text": "Les lacunes de béton correspondent à des défauts localisés de compacité se traduisant par des vides et une texture ouverte ; dans le cas 9.2, elles sont plus profondes, mettent à nu les armatures (passives et/ou de précontrainte) sans toutefois entraîner de réduction notable de leur section.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 16,
-        "theme": "cachetage_sec",
-        "title": "Question 16",
-        "text": "Décollement des cachetages au droit des ancrages des câbles de précontrainte, sans trace d’humidité (état sec), dû à une mauvaise adhérence du matériau de cachetage et/ou à un retrait excessif lors de sa mise en œuvre.",
-        "correct": "Bénin",
-        "critical": "low",
-        "requires_justification": False,
-    },
-    {
-        "id": 17,
-        "theme": "lacunes_superficielles",
-        "title": "Question 17",
-        "text": "Lacunes superficielles de béton en sous-face ou en parement vertical d’une entretoise précontrainte, sans mise à nu des armatures, dues à un défaut de mise en œuvre (vibration insuffisante, forte densité d’armatures) et/ou à une formulation inadaptée du béton.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 18,
-        "theme": "epaufrures_poutre",
-        "title": "Question 18",
-        "text": "Épaufrures du béton aux angles inférieurs d’une poutre, résultant de chocs (manutention en phase de construction et/ou impacts de véhicules hors gabarit), avec déchirure des conduits de câbles de précontrainte sans atteinte des câbles eux-mêmes.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 19,
-        "theme": "entretoise_eclatement",
-        "title": "Question 19",
-        "text": "Éclatement localisé du béton à l’angle inférieur d’une entretoise, avec mise à nu d’armatures passives présentant une réduction importante de section, dû à la poussée exercée par l’oxydation des aciers sur le béton d’enrobage.",
-        "correct": "Moyen",
-        "critical": "medium",
-        "requires_justification": False,
-    },
-    {
-        "id": 20,
-        "theme": "desagregation",
-        "title": "Question 20",
-        "text": "Désagrégation du béton se traduisant par une destruction en profondeur, étendue, due à une mauvaise qualité du béton et/ou à l'action du gel et/ou à l'agressivité du milieu environnant (attaque chimique), compromettant la durabilité et la capacité portante de l’élément.",
+        "text": (
+            "Fissure(s) oblique(s) de type II, proche(s) des zones sur appui, parfois combinée(s) avec des fissures "
+            "de type I, due(s) à l'effet excessif combiné du moment fléchissant et de l'effort tranchant et/ou "
+            "à une perte de précontrainte."
+        ),
         "correct": "Grave",
         "critical": "high",
         "requires_justification": True,
+        "has_image": True,
+        "alerte": True,
+    },
+    {
+        "id": 7,
+        "theme": "poutres",
+        "title": "Question 7",
+        "text": (
+            "Fissures à la jonction entre l'âme et le hourdis ou le talon, de type VIII, d'ouverture inférieure "
+            "à 0,3 mm ou avec venue d'eau, dues au retrait gêné de l'âme par les coffrages laissés trop longtemps "
+            "en place et/ou à une insuffisance d'armatures de couture entre d'une part le hourdis et d'autre part le talon."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    {
+        "id": 8,
+        "theme": "poutres",
+        "title": "Question 8",
+        "text": (
+            "Épaufrures du béton aux angles inférieurs d'une poutre, résultant de chocs lors des opérations de "
+            "manutention à la construction et/ou aux chocs de véhicules hors gabarit circulant sur la voie franchie, "
+            "sans mise à nu d'armature."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+        "has_image": False,
+        "alerte": False,
+    },
+    {
+        "id": 9,
+        "theme": "poutres",
+        "title": "Question 9",
+        "text": (
+            "Lacunes de béton en sous-face d'un talon de poutre à mi-travée, là où les armatures passives et actives "
+            "sont les plus nombreuses, avec réduction des sections des armatures actives et/ou rupture de certaines "
+            "d'entre elles, dues à un défaut de mise en œuvre du béton (vibrations insuffisantes, densité d'armatures "
+            "importante) et/ou à une mauvaise formulation du béton."
+        ),
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": True,
+        "has_image": False,
+        "alerte": True,
+    },
+    {
+        "id": 10,
+        "theme": "poutres",
+        "title": "Question 10",
+        "text": (
+            "Fissure(s) localisée(s), épaufrures apparaissant lors des phases de manutention au droit des zones de "
+            "levage, de type X, risquant de compromettre (fissuration importante, éclatements localisés importants) "
+            "la résistance locale de la poutre."
+        ),
+        "correct": "Moyen",
+        "critical": "medium",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    # --- HOURDIS INTERMÉDIAIRES ---
+    {
+        "id": 11,
+        "theme": "hourdis_intermediaires",
+        "title": "Question 11",
+        "text": (
+            "Fissuration oblique en « arêtes de poisson » près des abouts des poutres, de type XII, due à "
+            "l'insuffisance de couture du hourdis sous l'effet de la diffusion de précontrainte et de l'effort "
+            "tranchant, fines et sèches."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    {
+        "id": 12,
+        "theme": "hourdis_intermediaires",
+        "title": "Question 12",
+        "text": (
+            "Fissures longitudinales de type XIV, dues à une insuffisance de résistance ou à des efforts appliqués "
+            "plus importants que prévus et/ou à l'effet de câbles de précontrainte transversale (câbles mal excentrés, "
+            "poussée au vide), nombreuses, avec venue d'eau, dans le cas d'un hourdis précontraint transversalement "
+            "avec traces de corrosion."
+        ),
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": True,
+        "has_image": True,
+        "alerte": True,
+    },
+    {
+        "id": 13,
+        "theme": "hourdis_intermediaires",
+        "title": "Question 13",
+        "text": (
+            "Éclatement, décollement du béton de type XV, localisés, avec éclatements par plaques de certaines zones "
+            "du hourdis, sans réduction notable des sections des armatures apparentes et/ou, pour les hourdis "
+            "précontraints, avec mise à nu des armatures actives sans réduction notable de leurs sections."
+        ),
+        "correct": "Moyen",
+        "critical": "medium",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    {
+        "id": 14,
+        "theme": "hourdis_intermediaires",
+        "title": "Question 14",
+        "text": (
+            "Traces de circulation d'eau à travers le hourdis intermédiaire, liées à un défaut d'étanchéité en "
+            "extrados, dues à l'absence totale ou partielle de chape d'étanchéité et/ou à des défauts de mise en "
+            "œuvre de la chape, notamment aux raccordements sur les contre-bordures, les avaloirs, les joints de chaussée."
+        ),
+        "correct": "Moyen",
+        "critical": "medium",
+        "requires_justification": False,
+        "has_image": False,
+        "alerte": False,
+    },
+    # --- HOURDIS EN ENCORBELLEMENT ---
+    {
+        "id": 15,
+        "theme": "hourdis_encorbellement",
+        "title": "Question 15",
+        "text": (
+            "Fissures de type XVII, transversales, réparties sur toute la longueur de l'encorbellement, dues au "
+            "retrait gêné du béton de l'encorbellement coulé postérieurement à la poutre de rive, avec venue d'eau "
+            "et/ou accompagnées d'efflorescences."
+        ),
+        "correct": "Moyen",
+        "critical": "medium",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    {
+        "id": 16,
+        "theme": "hourdis_encorbellement",
+        "title": "Question 16",
+        "text": (
+            "Fissuration oblique en « arêtes de poisson » près des abouts des poutres, de type XX, due à "
+            "l'insuffisance d'armatures de couture du hourdis sous l'effet de la diffusion de précontrainte et "
+            "de l'effort tranchant, avec venue d'eau et coulures de rouille."
+        ),
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    {
+        "id": 17,
+        "theme": "hourdis_encorbellement",
+        "title": "Question 17",
+        "text": (
+            "Décollements des cachetages des ancrages des câbles de précontrainte transversale, secs, dus à une "
+            "mauvaise adhérence du matériau de cachetage et/ou à un retrait excessif lors de la mise en œuvre "
+            "du cachetage."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+        "has_image": False,
+        "alerte": False,
+    },
+    # --- ENTRETOISES ---
+    {
+        "id": 18,
+        "theme": "entretoises",
+        "title": "Question 18",
+        "text": (
+            "Fissurations obliques diverses de type XXII, verticales ou inclinées, sur entretoise en béton armé, "
+            "dues à l'application d'efforts dissymétriques lors des phasages de mise en tension des poutres et du "
+            "bétonnage du tablier et/ou à une insuffisante résistance aux effets de la flexion transversale, "
+            "avec fissure(s) d'ouverture supérieure à 0,6 mm."
+        ),
+        "correct": "Grave",
+        "critical": "high",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    {
+        "id": 19,
+        "theme": "entretoises",
+        "title": "Question 19",
+        "text": (
+            "Éclatement localisé de béton avec mise à nu d'armature(s) de type XXIII, dans l'angle inférieur "
+            "d'une entretoise, dû à la poussée exercée par l'oxydation des armatures sur le béton d'enrobage, "
+            "sans réduction notable des sections des armatures passives apparentes."
+        ),
+        "correct": "Moyen",
+        "critical": "medium",
+        "requires_justification": False,
+        "has_image": True,
+        "alerte": False,
+    },
+    # --- DÉFAUTS DU MATÉRIAU BÉTON ---
+    {
+        "id": 20,
+        "theme": "defauts_beton",
+        "title": "Question 20",
+        "text": (
+            "Efflorescences et stalactites sèches résultant de l'entraînement de la chaux contenue dans le béton "
+            "par les circulations d'eaux internes et de son dépôt sous forme de calcite en parement."
+        ),
+        "correct": "Bénin",
+        "critical": "low",
+        "requires_justification": False,
+        "has_image": False,
+        "alerte": False,
     },
 ]
 
@@ -262,19 +388,12 @@ QUESTION_MAP = {q["id"]: q for q in QUESTIONS}
 
 # =========================================================
 # IMAGES
+# Questions avec image : 1,2,3,4,5,6,7,10,11,12,13,15,16,18,19
+# Questions sans image : 8,9,14,17,20
 # =========================================================
 QUESTION_IMAGES = {
-    1: "images/Image1.png",
-    2: "images/Image2.png",
-    3: "images/Image3.png",
-    4: "images/Image4.png",
-    5: "images/Image5.png",
-    6: "images/Image6.png",
-    7: "images/Image7.png",
-    8: "images/Image8.png",
-    9: "images/Image9.png",
-    10: "images/Image10.png",
-    11: "images/Image11.png",
+    qid: f"images/Image{qid}.png"
+    for qid in [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 15, 16, 18, 19]
 }
 
 # =========================================================
@@ -302,8 +421,7 @@ def answer_order(value: str) -> int:
 
 
 def get_strengths_and_weaknesses(theme_percentages):
-    strengths = []
-    weaknesses = []
+    strengths, weaknesses = [], []
     for theme, value in theme_percentages.items():
         if value >= 75:
             strengths.append(theme)
@@ -321,41 +439,35 @@ def analyze_justification_simple(text: str, keywords):
         quality = "moyenne"
     else:
         quality = "bonne"
-    return {
-        "score": len(found),
-        "concepts": ", ".join(found),
-        "quality": quality,
-    }
+    return {"score": len(found), "concepts": ", ".join(found), "quality": quality}
 
 
 def generate_recommendation(result_row):
     critical_errors = result_row.get("erreurs_critiques", 0)
     under = result_row.get("sous_estimation", 0)
-    q2_quality = result_row.get("q2_qualite", "")
-    q5_quality = result_row.get("q5_qualite", "")
-    q20_quality = result_row.get("q20_qualite", "")
+    q1_quality = result_row.get("q1_qualite", "")
+    q4_quality = result_row.get("q4_qualite", "")
+    q6_quality = result_row.get("q6_qualite", "")
 
     if critical_errors >= 3:
-        return "Une formation prioritaire sur l'identification des situations graves et des signaux d’alerte est recommandée."
+        return "Une formation prioritaire sur l'identification des situations graves et des signaux d'alerte est recommandée."
     if under >= 4:
         return "Une sensibilisation au risque de sous-estimation des désordres structurels est recommandée."
-    if q2_quality == "faible" or q5_quality == "faible" or q20_quality == "faible":
+    if q1_quality == "faible" or q4_quality == "faible" or q6_quality == "faible":
         return "Un renforcement du raisonnement technique écrit est recommandé sur les cas critiques."
     if result_row.get("taux_reussite", 0) >= 80:
-        return "Le niveau est satisfaisant. Un maintien des acquis par retour d’expérience est recommandé."
+        return "Le niveau est satisfaisant. Un maintien des acquis par retour d'expérience est recommandé."
     return "Une consolidation ciblée sur les thèmes les moins maîtrisés est recommandée."
 
 
 def send_report_email(to_email: str, subject: str, body: str):
     if not (SMTP_HOST and SMTP_PORT and SMTP_USER and SMTP_PASSWORD and MAIL_FROM):
         raise RuntimeError("Configuration email incomplète.")
-
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = MAIL_FROM
     msg["To"] = to_email
     msg.set_content(body)
-
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
         server.login(SMTP_USER, SMTP_PASSWORD)
@@ -404,23 +516,36 @@ def analyze_submission(nom: str, prenom: str, email: str):
                 f"Q{qid}: répondu {user_answer or 'vide'} / attendu {correct_answer} ({error_type})"
             )
 
-    q2_analysis = analyze_justification_simple(
-        st.session_state.justifs.get(2, ""),
-        ["fissure", "cambrure", "affaissement", "grave", "structure", "poutre"],
+    # Analyse justifications des questions Alerte avec justification obligatoire
+    q1_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(1, ""),
+        ["fissure", "cambrure", "hauteur", "grave", "poutre", "affaissement"],
+    )
+    q4_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(4, ""),
+        ["fracture", "talon", "gel", "câble", "rouille", "corrosion", "grave"],
     )
     q5_analysis = analyze_justification_simple(
         st.session_state.justifs.get(5, ""),
-        ["cable", "precontrainte", "rouille", "eau", "eclatement", "grave"],
+        ["cachetage", "ancrage", "eau", "rouille", "câble", "efflorescence", "grave"],
     )
-    q20_analysis = analyze_justification_simple(
-        st.session_state.justifs.get(20, ""),
-        ["desagregation", "beton", "gel", "attaque chimique", "grave", "portante"],
+    q6_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(6, ""),
+        ["fissure", "oblique", "appui", "tranchant", "moment", "précontrainte", "grave"],
+    )
+    q9_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(9, ""),
+        ["lacune", "talon", "armature", "rupture", "section", "grave"],
+    )
+    q12_analysis = analyze_justification_simple(
+        st.session_state.justifs.get(12, ""),
+        ["fissure", "longitudinale", "hourdis", "corrosion", "eau", "câble", "grave"],
     )
 
-    theme_percentages = {}
-    for theme, stats in theme_scores.items():
-        pct = round((stats["correct"] / stats["total"]) * 100, 2) if stats["total"] > 0 else 0.0
-        theme_percentages[theme] = pct
+    theme_percentages = {
+        theme: round((stats["correct"] / stats["total"]) * 100, 2) if stats["total"] > 0 else 0.0
+        for theme, stats in theme_scores.items()
+    }
 
     if score >= 16 and critical_errors <= 1:
         profil = "Bon niveau global"
@@ -445,15 +570,12 @@ def analyze_submission(nom: str, prenom: str, email: str):
         "erreurs_critiques": critical_errors,
         "profil": profil,
         "details_erreurs": " | ".join(erreurs_details),
-        "q2_nlp_score": q2_analysis["score"],
-        "q2_concepts": q2_analysis["concepts"],
-        "q2_qualite": q2_analysis["quality"],
-        "q5_nlp_score": q5_analysis["score"],
-        "q5_concepts": q5_analysis["concepts"],
+        "q1_qualite": q1_analysis["quality"],
+        "q4_qualite": q4_analysis["quality"],
         "q5_qualite": q5_analysis["quality"],
-        "q20_nlp_score": q20_analysis["score"],
-        "q20_concepts": q20_analysis["concepts"],
-        "q20_qualite": q20_analysis["quality"],
+        "q6_qualite": q6_analysis["quality"],
+        "q9_qualite": q9_analysis["quality"],
+        "q12_qualite": q12_analysis["quality"],
         "theme_percentages": theme_percentages,
     }
 
@@ -464,30 +586,30 @@ def generate_report(result_row):
     weaknesses_text = ", ".join(weaknesses) if weaknesses else "Aucune faiblesse majeure détectée."
 
     return f"""
-RAPPORT INDIVIDUEL D'ÉVALUATION
-================================
+RAPPORT INDIVIDUEL D'ÉVALUATION — TEST IQOA VIPP
+==================================================
 
 Employé : {result_row['prenom']} {result_row['nom']}
-Email : {result_row['email']}
+Email   : {result_row['email']}
 
 1. Résultat global
 ------------------
-Score : {result_row['score']} / {result_row['total']}
+Score          : {result_row['score']} / {result_row['total']}
 Taux de réussite : {result_row['taux_reussite']} %
-Profil : {result_row['profil']}
+Profil         : {result_row['profil']}
 
 2. Analyse du jugement
 ----------------------
 Sous-estimations : {result_row['sous_estimation']}
-Sur-estimations : {result_row['sur_estimation']}
+Sur-estimations  : {result_row['sur_estimation']}
 Erreurs critiques : {result_row['erreurs_critiques']}
 
-3. Analyse des compétences
---------------------------
-Points forts : {strengths_text}
+3. Analyse des compétences par thème
+--------------------------------------
+Points forts  : {strengths_text}
 Points faibles : {weaknesses_text}
 
-6. Recommandation
+4. Recommandation
 -----------------
 {generate_recommendation(result_row)}
 """.strip()
@@ -498,7 +620,7 @@ Points faibles : {weaknesses_text}
 # =========================================================
 if st.session_state.page == "home":
     st.title("Questionnaire de validation des connaissances")
-    st.subheader("Inspecteurs d’ouvrages d’art – Ponts VIPP")
+    st.subheader("Inspecteurs d'ouvrages d'art – Ponts VIPP")
     menu = st.sidebar.radio("Menu", ["Connexion", "Admin"])
 
     if menu == "Connexion":
@@ -579,10 +701,10 @@ if st.session_state.page == "home":
 elif st.session_state.page == "accueil":
     st.title(f"Bienvenue {st.session_state.prenom} {st.session_state.nom}")
     st.write(f"Email : {st.session_state.email}")
-    st.write("Répondre pour chaque situation :")
-    st.write("🟥 Grave – Alerter immédiatement")
-    st.write("🟧 Moyen – À surveiller")
-    st.write("🟩 Bénin – Pas d’alerte nécessaire")
+    st.markdown("### Légende")
+    st.write("🟥 **Grave** — Voir à Alerte (3 à 3U) — Intervention immédiate requise")
+    st.write("🟧 **Moyen** — (2 et 2E) — À surveiller")
+    st.write("🟩 **Bénin** — (1) — Pas d'alerte nécessaire")
 
     if st.button("Lancer le test"):
         st.session_state.page = "quiz"
@@ -605,25 +727,43 @@ elif st.session_state.page == "quiz":
     qid = st.session_state.question
     q = QUESTION_MAP[qid]
 
+    # Affichage section
+    SECTION_LABELS = {
+        "poutres": "Poutres",
+        "hourdis_intermediaires": "Hourdis intermédiaires",
+        "hourdis_encorbellement": "Hourdis en encorbellement",
+        "entretoises": "Entretoises",
+        "defauts_beton": "Défauts du matériau béton",
+    }
+    section_label = SECTION_LABELS.get(q["theme"], q["theme"])
+
     st.title(f"Question {qid} / {len(QUESTIONS)}")
+    st.caption(f"Thème : {section_label}")
     st.progress(qid / len(QUESTIONS))
+
+    if q["alerte"]:
+        st.error("⚠️ Alerte — Intervention immédiate requise si mal classé")
+
     st.markdown(f"### {q['title']}")
     st.write(q["text"])
 
+    # Image
     image_path = QUESTION_IMAGES.get(qid)
-    if image_path and os.path.exists(image_path):
-        st.image(image_path, use_column_width=True)
-    elif image_path:
-        st.info(f"Image attendue : {image_path}")
+    if image_path:
+        if os.path.exists(image_path):
+            st.image(image_path, use_column_width=True)
+        else:
+            st.info(f"Image attendue : {image_path}")
 
     options = ["Grave", "Moyen", "Bénin"]
     current_answer = st.session_state.answers.get(qid, "Grave")
 
     selected = st.radio(
-        "Choisir la gravité",
+        "Choisir la classe IQOA",
         options,
         index=options.index(current_answer),
         key=f"q_{qid}_radio",
+        format_func=lambda x: {"Grave": "🟥 Grave", "Moyen": "🟧 Moyen", "Bénin": "🟩 Bénin"}[x],
     )
     st.session_state.answers[qid] = selected
 
@@ -671,9 +811,9 @@ elif st.session_state.page == "result":
 
     st.subheader(f"Score : {result_row['score']} / {result_row['total']}")
     if result_row["score"] >= 16:
-        st.success("Employé apte à sortir en terrain")
+        st.success("✅ Employé apte à sortir en terrain")
     else:
-        st.error("Employé non apte – formation requise")
+        st.error("❌ Employé non apte – formation requise")
 
     st.write(f"**Profil :** {result_row['profil']}")
     st.write(f"**Erreurs critiques :** {result_row['erreurs_critiques']}")
@@ -718,13 +858,13 @@ elif st.session_state.page == "result":
         try:
             send_report_email(
                 to_email=st.session_state.email,
-                subject="Votre rapport d’évaluation VIPP",
+                subject="Votre rapport d'évaluation VIPP — TEST IQOA",
                 body=report_text,
             )
             st.success(f"Le rapport a été envoyé à {st.session_state.email}.")
             st.session_state.mail_sent = True
         except Exception as e:
-            st.warning(f"Rapport généré, mais l’envoi du mail a échoué : {e}")
+            st.warning(f"Rapport généré, mais l'envoi du mail a échoué : {e}")
 
     if st.button("Retour accueil"):
         st.session_state.page = "accueil"
