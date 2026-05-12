@@ -6,6 +6,7 @@ import json
 from email.message import EmailMessage
 
 import urllib.request
+import time
 import pandas as pd
 import streamlit as st
 
@@ -193,8 +194,8 @@ def answer_order(v):
     return {"Bénin": 1, "Moyen": 2, "Grave": 3}.get(v, 0)
 
 
-def call_gemini(prompt: str) -> str:
-    """Appel à l'API Gemini (Google) — gratuit jusqu'à 1500 req/jour."""
+def call_gemini(prompt: str, retries: int = 3) -> str:
+    """Appel à l'API Gemini avec retry automatique en cas de 429."""
     if not GEMINI_KEY:
         return "⚠️ Clé API Gemini non configurée."
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
@@ -202,12 +203,20 @@ def call_gemini(prompt: str) -> str:
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-        return result["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e:
-        return f"⚠️ Erreur Gemini : {e}"
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = 15 * (attempt + 1)  # 15s, 30s, 45s
+                time.sleep(wait)
+            else:
+                return f"⚠️ Erreur Gemini : {e}"
+        except Exception as e:
+            return f"⚠️ Erreur Gemini : {e}"
+    return "⚠️ Gemini indisponible après plusieurs tentatives. Réessayez dans une minute."
 
 
 def analyze_justifications_with_ai(justifs: dict) -> dict:
@@ -337,6 +346,9 @@ def analyze_submission(nom, prenom, email):
     score_justifs = ai_result.get("score_moyen", 0.0)
     synthese_justifs = ai_result.get("synthese", "")
     st.session_state.ai_analysis = ai_result
+
+    # Pause pour éviter le rate limit Gemini
+    time.sleep(10)
 
     # Aptitude
     if score_brut == total and critical_errors == 0:
