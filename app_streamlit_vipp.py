@@ -5,7 +5,7 @@ import sqlite3
 import json
 from email.message import EmailMessage
 
-import httpx
+import urllib.request
 import pandas as pd
 import streamlit as st
 
@@ -202,14 +202,20 @@ def call_claude(prompt: str) -> str:
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
-    payload = {
+    payload = json.dumps({
         "model": "claude-sonnet-4-20250514",
         "max_tokens": 1500,
         "messages": [{"role": "user", "content": prompt}],
-    }
-    r = httpx.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=30)
-    r.raise_for_status()
-    return r.json()["content"][0]["text"]
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        result = json.loads(resp.read().decode("utf-8"))
+    return result["content"][0]["text"]
 
 
 def analyze_justifications_with_ai(justifs: dict) -> dict:
