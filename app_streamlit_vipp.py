@@ -31,7 +31,7 @@ SMTP_USER      = get_secret("SMTP_USER")
 SMTP_PASSWORD  = get_secret("SMTP_PASSWORD")
 MAIL_FROM      = get_secret("MAIL_FROM", SMTP_USER)
 ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "admin123")
-ANTHROPIC_KEY  = get_secret("ANTHROPIC_API_KEY")
+GEMINI_KEY = get_secret("GEMINI_API_KEY")
 
 # Pondération par criticité
 WEIGHTS = {"high": 3, "medium": 2, "low": 1}
@@ -193,29 +193,21 @@ def answer_order(v):
     return {"Bénin": 1, "Moyen": 2, "Grave": 3}.get(v, 0)
 
 
-def call_claude(prompt: str) -> str:
-    """Appel à l'API Anthropic Claude."""
-    if not ANTHROPIC_KEY:
-        return "⚠️ Clé API Anthropic non configurée."
-    headers = {
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
+def call_gemini(prompt: str) -> str:
+    """Appel à l'API Gemini (Google) — gratuit jusqu'à 1500 req/jour."""
+    if not GEMINI_KEY:
+        return "⚠️ Clé API Gemini non configurée."
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
     payload = json.dumps({
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": 1500,
-        "messages": [{"role": "user", "content": prompt}],
+        "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers=headers,
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
-    return result["content"][0]["text"]
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        return result["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"⚠️ Erreur Gemini : {e}"
 
 
 def analyze_justifications_with_ai(justifs: dict) -> dict:
@@ -255,7 +247,7 @@ Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, avec ce format e
 Voici les justifications à analyser :
 {justif_block}
 """
-    raw = call_claude(prompt)
+    raw = call_gemini(prompt)
     try:
         return json.loads(raw)
     except Exception:
@@ -292,7 +284,7 @@ Rédige un rapport de recommandation personnalisé en français, structuré ains
 
 Sois précis, bienveillant et constructif. Maximum 300 mots.
 """
-    return call_claude(prompt)
+    return call_gemini(prompt)
 
 
 def analyze_submission(nom, prenom, email):
