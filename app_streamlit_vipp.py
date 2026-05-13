@@ -378,8 +378,6 @@ def analyze_submission(nom, prenom, email):
         "ai_justifs": ai_result.get("justifications", {}),
     }
 
-    # Recommandation IA
-    result_data["recommandation"] = generate_ai_recommendation(result_data)
     return result_data
 
 
