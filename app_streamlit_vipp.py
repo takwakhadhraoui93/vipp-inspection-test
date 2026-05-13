@@ -221,33 +221,43 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
 
 def analyze_and_recommend_with_ai(justifs: dict, result_data: dict) -> dict:
     """
-    Un seul appel Gemini pour analyser les justifications ET générer la recommandation.
+    Un seul appel Gemini :
+    - analyse toutes les réponses (bonnes et mauvaises)
+    - analyse les justifications des questions critiques
+    - génère un rapport de profil + recommandation personnalisée
     """
-    justif_questions = {q["id"]: q for q in QUESTIONS if q["requires_justification"]}
-
-    justif_block = ""
-    for qid, q in justif_questions.items():
-        texte = justifs.get(qid, "").strip() or "(aucune justification fournie)"
-        justif_block += f"\nQ{qid} — {q['theme']} (réponse attendue : {q['correct']}) :\n{q['text']}\nJustification : {texte}\n"
+    # Bloc toutes les questions
+    all_q_block = ""
+    for q in QUESTIONS:
+        qid = q["id"]
+        user_ans = result_data["all_answers"].get(qid, "?")
+        correct  = q["correct"]
+        status   = "✓" if user_ans == correct else "✗"
+        justif   = ""
+        if q["requires_justification"]:
+            justif = f"\n   Justification : {justifs.get(qid, '').strip() or '(aucune)'}"
+        all_q_block += (
+            f"Q{qid} [{q['theme']}] — Réponse : {user_ans} / Attendu : {correct} {status}"
+            f"{justif}\n"
+        )
 
     prompt = f"""
-Tu es un expert formateur en inspection des ouvrages d'art (ponts VIPP).
-Un inspecteur a passé un test IQOA avec les résultats suivants :
+Tu es un expert formateur en inspection des ouvrages d'art (ponts VIPP - béton précontraint).
+Voici les résultats complets d'un inspecteur au test de compétences IQOA :
 
+STATISTIQUES :
 - Score brut : {result_data['score_brut']} / {result_data['total']}
-- Score pondéré : {result_data['score_pondere']} / {result_data['score_pondere_max']}
+- Score pondéré : {result_data['score_pondere']} / {result_data['score_pondere_max']} (Alerte=3pts, Moyen=2pts, Bénin=1pt)
 - Taux de réussite : {result_data['taux_reussite']} %
-- Détection danger : {result_data['score_danger']} %
-- Précision jugement : {result_data['score_precision']} %
-- Sous-estimations : {result_data['sous_estimation']}
-- Sur-estimations : {result_data['sur_estimation']}
-- Erreurs critiques : {result_data['erreurs_critiques']}
-- Détail erreurs : {result_data['details_erreurs']}
+- Détection des situations graves : {result_data['score_danger']} %
+- Précision du jugement : {result_data['score_precision']} %
+- Sous-estimations : {result_data['sous_estimation']} | Sur-estimations : {result_data['sur_estimation']}
+- Erreurs sur questions critiques : {result_data['erreurs_critiques']}
 
-Justifications écrites par l'inspecteur pour les questions critiques :
-{justif_block}
+DÉTAIL DE TOUTES LES RÉPONSES :
+{all_q_block}
 
-Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans balises markdown :
+Réponds UNIQUEMENT en JSON valide, sans balises markdown, avec ce format :
 {{
   "justifications": {{
     "1": {{"score": 0, "commentaire": "..."}},
@@ -258,16 +268,21 @@ Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans balises mar
     "12": {{"score": 0, "commentaire": "..."}}
   }},
   "score_moyen": 0.0,
-  "synthese": "...",
+  "profil_global": "...",
+  "points_forts": "...",
+  "points_faibles": "...",
   "recommandation": "..."
 }}
 
-Pour les justifications : score 0=absente, 1=partielle, 2=correcte, 3=excellente.
-Pour la recommandation : 3 à 4 phrases personnalisées, bienveillantes et concrètes en français.
+Consignes :
+- justifications : score 0=absente/hors sujet, 1=partielle, 2=correcte, 3=excellente + commentaire court
+- score_moyen : moyenne des scores justifications
+- profil_global : 2 phrases résumant le niveau de l'inspecteur
+- points_forts : ce qu'il maîtrise bien (thèmes, types de désordres)
+- points_faibles : ses lacunes principales avec exemples des erreurs commises
+- recommandation : plan de formation concret, bienveillant, 3-4 phrases en français
 """
-    raw = call_gemini(prompt)
-
-    # Nettoyage éventuel des balises markdown
+    raw   = call_gemini(prompt)
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(clean)
@@ -275,7 +290,9 @@ Pour la recommandation : 3 à 4 phrases personnalisées, bienveillantes et concr
         return {
             "justifications": {},
             "score_moyen": 0.0,
-            "synthese": "Analyse indisponible.",
+            "profil_global": "Analyse indisponible.",
+            "points_forts": "",
+            "points_faibles": "",
             "recommandation": raw,
         }
 
@@ -325,7 +342,7 @@ def analyze_submission(nom, prenom, email):
     score_precision = round((1 - under_est / max(total_errors, 1)) * 100, 1) if total_errors else 100.0
     taux            = round(score_brut / total * 100, 1)
 
-    # Un seul appel IA pour justifications + recommandation
+    # Un seul appel IA — toutes les réponses + justifications + recommandation
     ai_result = analyze_and_recommend_with_ai(st.session_state.justifs, {
         "score_brut": score_brut, "total": total,
         "score_pondere": score_pondere, "score_pondere_max": MAX_WEIGHTED_SCORE,
@@ -334,9 +351,10 @@ def analyze_submission(nom, prenom, email):
         "sous_estimation": under_est, "sur_estimation": over_est,
         "erreurs_critiques": critical_errors,
         "details_erreurs": " | ".join(erreurs_details) or "Aucune erreur.",
+        "all_answers": st.session_state.answers,
     })
     score_justifs    = ai_result.get("score_moyen", 0.0)
-    synthese_justifs = ai_result.get("synthese", "")
+    synthese_justifs = ai_result.get("profil_global", "")
     recommandation   = ai_result.get("recommandation", "")
     st.session_state.ai_analysis = ai_result
 
@@ -367,7 +385,9 @@ def analyze_submission(nom, prenom, email):
         "score_brut": score_brut, "total": total,
         "score_pondere": score_pondere, "score_pondere_max": MAX_WEIGHTED_SCORE,
         "taux_reussite": taux,
-        "aptitude": aptitude, "profil": profil,
+        "aptitude": aptitude,         "profil": profil,
+        "points_forts":  ai_result.get("points_forts", ""),
+        "points_faibles": ai_result.get("points_faibles", ""),
         "score_danger": score_danger,
         "score_precision": score_precision,
         "score_justifications": round(score_justifs, 2),
@@ -409,20 +429,28 @@ Détection du danger (questions Alerte) : {r['score_danger']} %
 Précision du jugement                  : {r['score_precision']} %
 Qualité des justifications             : {r['score_justifications']} / 3
 
-Sous-estimations : {r['sous_estimation']}
-Sur-estimations  : {r['sur_estimation']}
+Sous-estimations  : {r['sous_estimation']}
+Sur-estimations   : {r['sur_estimation']}
 Erreurs critiques : {r['erreurs_critiques']}
 
 3. ANALYSE IA DES JUSTIFICATIONS
 ----------------------------------
 {justifs_section}
-Synthèse : {r['synthese_justifs']}
+Profil global : {r.get('synthese_justifs', '')}
 
-4. RECOMMANDATION PERSONNALISÉE (générée par IA)
+4. POINTS FORTS
+---------------
+{r.get('points_forts', 'Non disponible.')}
+
+5. POINTS FAIBLES
+-----------------
+{r.get('points_faibles', 'Non disponible.')}
+
+6. RECOMMANDATION PERSONNALISÉE (générée par IA)
 -------------------------------------------------
-{r['recommandation']}
+{r.get('recommandation', 'Non disponible.')}
 
-5. DÉTAIL DES ERREURS
+7. DÉTAIL DES ERREURS
 ----------------------
 {r['details_erreurs']}
 """.strip()
