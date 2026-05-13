@@ -219,27 +219,35 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
     return "⚠️ Gemini indisponible après plusieurs tentatives. Réessayez dans une minute."
 
 
-def analyze_justifications_with_ai(justifs: dict) -> dict:
+def analyze_and_recommend_with_ai(justifs: dict, result_data: dict) -> dict:
     """
-    Envoie toutes les justifications à Claude et récupère une analyse structurée en JSON.
+    Un seul appel Gemini pour analyser les justifications ET générer la recommandation.
     """
     justif_questions = {q["id"]: q for q in QUESTIONS if q["requires_justification"]}
 
     justif_block = ""
     for qid, q in justif_questions.items():
         texte = justifs.get(qid, "").strip() or "(aucune justification fournie)"
-        justif_block += f"\n---\nQuestion {qid} — {q['theme']} (désordre : {q['correct']}) :\n{q['text']}\nJustification de l'inspecteur : {texte}\n"
+        justif_block += f"\nQ{qid} — {q['theme']} (réponse attendue : {q['correct']}) :\n{q['text']}\nJustification : {texte}\n"
 
     prompt = f"""
-Tu es un expert en inspection des ouvrages d'art (ponts VIPP - poutres précontraintes par post-tension).
-Un inspecteur a répondu à un test de compétences IQOA et fourni des justifications pour les questions critiques.
+Tu es un expert formateur en inspection des ouvrages d'art (ponts VIPP).
+Un inspecteur a passé un test IQOA avec les résultats suivants :
 
-Analyse chaque justification selon ces critères :
-1. Pertinence technique : l'inspecteur a-t-il identifié la bonne cause du désordre ?
-2. Complétude : a-t-il mentionné les éléments clés (mécanisme, conséquence, urgence) ?
-3. Score de 0 à 3 (0=absente ou hors sujet, 1=partielle, 2=correcte, 3=excellente)
+- Score brut : {result_data['score_brut']} / {result_data['total']}
+- Score pondéré : {result_data['score_pondere']} / {result_data['score_pondere_max']}
+- Taux de réussite : {result_data['taux_reussite']} %
+- Détection danger : {result_data['score_danger']} %
+- Précision jugement : {result_data['score_precision']} %
+- Sous-estimations : {result_data['sous_estimation']}
+- Sur-estimations : {result_data['sur_estimation']}
+- Erreurs critiques : {result_data['erreurs_critiques']}
+- Détail erreurs : {result_data['details_erreurs']}
 
-Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, avec ce format exact :
+Justifications écrites par l'inspecteur pour les questions critiques :
+{justif_block}
+
+Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, sans balises markdown :
 {{
   "justifications": {{
     "1": {{"score": 0, "commentaire": "..."}},
@@ -250,50 +258,26 @@ Réponds UNIQUEMENT en JSON valide, sans texte avant ou après, avec ce format e
     "12": {{"score": 0, "commentaire": "..."}}
   }},
   "score_moyen": 0.0,
-  "synthese": "..."
+  "synthese": "...",
+  "recommandation": "..."
 }}
 
-Voici les justifications à analyser :
-{justif_block}
+Pour les justifications : score 0=absente, 1=partielle, 2=correcte, 3=excellente.
+Pour la recommandation : 3 à 4 phrases personnalisées, bienveillantes et concrètes en français.
 """
     raw = call_gemini(prompt)
+
+    # Nettoyage éventuel des balises markdown
+    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
-        return json.loads(raw)
+        return json.loads(clean)
     except Exception:
-        return {"justifications": {}, "score_moyen": 0.0, "synthese": raw}
-
-
-def generate_ai_recommendation(result_data: dict) -> str:
-    """Génère une recommandation personnalisée via Claude."""
-    erreurs = result_data.get("details_erreurs", "Aucune erreur.")
-    synthese_justifs = result_data.get("synthese_justifs", "")
-
-    prompt = f"""
-Tu es un expert formateur en inspection des ouvrages d'art (ponts VIPP).
-Voici les résultats d'un inspecteur au test de compétences IQOA :
-
-- Score brut : {result_data['score_brut']} / {result_data['total']}
-- Score pondéré : {result_data['score_pondere']} / {result_data['score_pondere_max']} (questions Alerte = 3pts, Moyen = 2pts, Bénin = 1pt)
-- Taux de réussite : {result_data['taux_reussite']} %
-- Aptitude : {result_data['aptitude']}
-- Score détection danger (questions Alerte) : {result_data['score_danger']} %
-- Score précision jugement : {result_data['score_precision']} %
-- Score qualité justifications : {result_data['score_justifications']} / 3
-- Sous-estimations : {result_data['sous_estimation']}
-- Sur-estimations : {result_data['sur_estimation']}
-- Erreurs critiques : {result_data['erreurs_critiques']}
-- Détail des erreurs : {erreurs}
-- Synthèse des justifications : {synthese_justifs}
-
-Rédige un rapport de recommandation personnalisé en français, structuré ainsi :
-1. Synthèse du profil (2-3 phrases)
-2. Points forts identifiés
-3. Points faibles et axes d'amélioration prioritaires
-4. Recommandation de formation concrète et adaptée au niveau
-
-Sois précis, bienveillant et constructif. Maximum 300 mots.
-"""
-    return call_gemini(prompt)
+        return {
+            "justifications": {},
+            "score_moyen": 0.0,
+            "synthese": "Analyse indisponible.",
+            "recommandation": raw,
+        }
 
 
 def analyze_submission(nom, prenom, email):
@@ -341,14 +325,20 @@ def analyze_submission(nom, prenom, email):
     score_precision = round((1 - under_est / max(total_errors, 1)) * 100, 1) if total_errors else 100.0
     taux            = round(score_brut / total * 100, 1)
 
-    # Analyse IA des justifications
-    ai_result = analyze_justifications_with_ai(st.session_state.justifs)
-    score_justifs = ai_result.get("score_moyen", 0.0)
+    # Un seul appel IA pour justifications + recommandation
+    ai_result = analyze_and_recommend_with_ai(st.session_state.justifs, {
+        "score_brut": score_brut, "total": total,
+        "score_pondere": score_pondere, "score_pondere_max": MAX_WEIGHTED_SCORE,
+        "taux_reussite": taux, "score_danger": score_danger,
+        "score_precision": score_precision,
+        "sous_estimation": under_est, "sur_estimation": over_est,
+        "erreurs_critiques": critical_errors,
+        "details_erreurs": " | ".join(erreurs_details) or "Aucune erreur.",
+    })
+    score_justifs    = ai_result.get("score_moyen", 0.0)
     synthese_justifs = ai_result.get("synthese", "")
+    recommandation   = ai_result.get("recommandation", "")
     st.session_state.ai_analysis = ai_result
-
-    # Pause pour éviter le rate limit Gemini
-    time.sleep(10)
 
     # Aptitude
     if score_brut == total and critical_errors == 0:
