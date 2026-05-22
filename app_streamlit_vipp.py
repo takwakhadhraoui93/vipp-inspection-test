@@ -649,16 +649,33 @@ elif st.session_state.page == "result":
 
     # Analyse justifications IA
     if st.session_state.ai_analysis:
-        st.markdown("### 📝 Analyse IA des justifications")
-        for qid_str, data in st.session_state.ai_analysis.get("justifications", {}).items():
-            stars = "★" * data["score"] + "☆" * (3 - data["score"])
-            st.markdown(f"**Q{qid_str}** [{stars}] — {data['commentaire']}")
-        if st.session_state.ai_analysis.get("synthese"):
-            st.info(f"**Synthèse :** {st.session_state.ai_analysis['synthese']}")
+        justifs_ai = st.session_state.ai_analysis.get("justifications", {})
+        if justifs_ai:
+            st.markdown("### 📝 Analyse des justifications")
+            for qid_str, data in justifs_ai.items():
+                score = data.get("score", 0)
+                stars = "★" * score + "☆" * (3 - score)
+                st.markdown(f"**Q{qid_str}** [{stars}] — {data.get('commentaire', '')}")
 
-    # Recommandation IA
-    st.markdown("### 🤖 Recommandation personnalisée")
-    st.write(r["recommandation"])
+    # Profil IA
+    if st.session_state.ai_analysis:
+        profil_global  = st.session_state.ai_analysis.get("profil_global", "")
+        points_forts   = st.session_state.ai_analysis.get("points_forts", "")
+        points_faibles = st.session_state.ai_analysis.get("points_faibles", "")
+        recommandation = st.session_state.ai_analysis.get("recommandation", "")
+
+        if profil_global:
+            st.markdown("### 🧠 Profil global")
+            st.write(profil_global)
+        if points_forts:
+            st.markdown("### ✅ Points forts")
+            st.write(points_forts)
+        if points_faibles:
+            st.markdown("### ⚠️ Points faibles")
+            st.write(points_faibles)
+        if recommandation:
+            st.markdown("### 🎯 Recommandation personnalisée")
+            st.write(recommandation)
 
     with st.expander("Voir le rapport complet"):
         st.text(report_text)
