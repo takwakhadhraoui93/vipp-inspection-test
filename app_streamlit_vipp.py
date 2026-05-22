@@ -203,14 +203,18 @@ def fallback_analysis(justifs: dict, result_data: dict) -> dict:
 
     if score_brut == total:
         profil = "L'inspecteur maîtrise parfaitement la classification IQOA sur l'ensemble des thèmes."
-    elif danger >= 80 and critical == 0:
+    elif score_brut >= 18 and danger == 100:
+        profil = "Très bon niveau avec une détection parfaite des situations graves."
+    elif danger >= 80 and critical == 0 and score_brut >= 15:
         profil = "Bon niveau général avec une bonne détection des situations graves."
     elif critical >= 3:
         profil = "Des lacunes importantes sur les situations graves nécessitent une attention prioritaire."
     elif under >= 4:
         profil = "Tendance marquée à sous-estimer la gravité des désordres structurels."
+    elif score_brut < 10:
+        profil = f"Niveau insuffisant ({score_brut}/{total}). Une formation complète est nécessaire avant toute sortie terrain."
     else:
-        profil = f"Niveau intermédiaire avec {score_brut}/{total} bonnes réponses."
+        profil = f"Niveau intermédiaire avec {score_brut}/{total} bonnes réponses. Des points restent à consolider."
 
     theme_pct  = result_data.get("theme_pct", {})
     forts      = ", ".join([t for t, v in theme_pct.items() if v >= 75]) or "Aucun thème dominant."
@@ -367,18 +371,22 @@ def analyze_submission(nom, prenom, email):
     else:
         aptitude = "Non apte — Formation requise"
 
-    if score_danger >= 90 and score_brut >= 18:
+    if score_brut == total and critical_errors == 0:
+        profil = "Expert confirmé"
+    elif score_danger == 100 and score_brut >= 18:
         profil = "Expert confirmé"
     elif score_danger >= 75 and score_brut >= 15:
         profil = "Bon niveau opérationnel"
-    elif score_danger >= 60:
+    elif score_danger >= 60 and score_brut >= 12:
         profil = "Niveau intermédiaire — vigilance sur les cas graves"
     elif under_est >= 4:
         profil = "Tendance à sous-estimer la gravité"
     elif over_est >= 4:
         profil = "Tendance à sur-estimer la gravité"
-    else:
+    elif score_brut < 10:
         profil = "Niveau insuffisant — formation prioritaire"
+    else:
+        profil = "Niveau intermédiaire — consolidation nécessaire"
 
     ai_data = {
         "score_brut": score_brut, "total": total,
@@ -597,6 +605,7 @@ elif st.session_state.page == "quiz":
     sel = st.radio("Choisir la classe IQOA", options, index=options.index(cur),
         key=f"q_{qid}_radio",
         format_func=lambda x: {"Grave": "🟥 Grave", "Moyen": "🟧 Moyen", "Bénin": "🟩 Bénin"}[x])
+    # Sauvegarde immédiate
     st.session_state.answers[qid] = sel
 
     if q["requires_justification"]:
