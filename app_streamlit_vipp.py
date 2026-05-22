@@ -198,7 +198,7 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
     """Appel à l'API Gemini avec retry automatique en cas de 429."""
     if not GEMINI_KEY:
         return "⚠️ Clé API Gemini non configurée."
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}]
     }).encode("utf-8")
@@ -210,7 +210,7 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
             return result["candidates"][0]["content"]["parts"][0]["text"]
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                wait = 15 * (attempt + 1)  # 15s, 30s, 45s
+                wait = 20 * (attempt + 1)  # 20s, 40s, 60s
                 time.sleep(wait)
             else:
                 return f"⚠️ Erreur Gemini : {e}"
@@ -226,61 +226,45 @@ def analyze_and_recommend_with_ai(justifs: dict, result_data: dict) -> dict:
     - analyse les justifications des questions critiques
     - génère un rapport de profil + recommandation personnalisée
     """
-    # Bloc toutes les questions
-    all_q_block = ""
+    # Bloc réponses — uniquement les erreurs pour alléger le prompt
+    errors_block = ""
     for q in QUESTIONS:
         qid = q["id"]
         user_ans = result_data["all_answers"].get(qid, "?")
         correct  = q["correct"]
-        status   = "✓" if user_ans == correct else "✗"
-        justif   = ""
+        if user_ans != correct:
+            justif = ""
+            if q["requires_justification"]:
+                justif = f" | Justification : {justifs.get(qid, '').strip() or '(aucune)'}"
+            errors_block += f"Q{qid} [{q['theme']}] : répondu {user_ans} / attendu {correct}{justif}\n"
+
+    # Bloc justifications correctes aussi
+    justif_block = ""
+    for q in QUESTIONS:
         if q["requires_justification"]:
-            justif = f"\n   Justification : {justifs.get(qid, '').strip() or '(aucune)'}"
-        all_q_block += (
-            f"Q{qid} [{q['theme']}] — Réponse : {user_ans} / Attendu : {correct} {status}"
-            f"{justif}\n"
-        )
+            qid = q["id"]
+            user_ans = result_data["all_answers"].get(qid, "?")
+            correct  = q["correct"]
+            if user_ans == correct:
+                justif_block += f"Q{qid} [correct] : {justifs.get(qid, '').strip() or '(aucune)'}\n"
 
-    prompt = f"""
-Tu es un expert formateur en inspection des ouvrages d'art (ponts VIPP - béton précontraint).
-Voici les résultats complets d'un inspecteur au test de compétences IQOA :
+    prompt = f"""Expert inspection ponts VIPP. Résultats inspecteur :
+Score: {result_data['score_brut']}/{result_data['total']} ({result_data['taux_reussite']}%)
+Score pondéré: {result_data['score_pondere']}/{result_data['score_pondere_max']}
+Danger: {result_data['score_danger']}% | Précision: {result_data['score_precision']}%
+Sous-estim: {result_data['sous_estimation']} | Sur-estim: {result_data['sur_estimation']} | Erreurs critiques: {result_data['erreurs_critiques']}
 
-STATISTIQUES :
-- Score brut : {result_data['score_brut']} / {result_data['total']}
-- Score pondéré : {result_data['score_pondere']} / {result_data['score_pondere_max']} (Alerte=3pts, Moyen=2pts, Bénin=1pt)
-- Taux de réussite : {result_data['taux_reussite']} %
-- Détection des situations graves : {result_data['score_danger']} %
-- Précision du jugement : {result_data['score_precision']} %
-- Sous-estimations : {result_data['sous_estimation']} | Sur-estimations : {result_data['sur_estimation']}
-- Erreurs sur questions critiques : {result_data['erreurs_critiques']}
+Erreurs commises :
+{errors_block or 'Aucune erreur.'}
 
-DÉTAIL DE TOUTES LES RÉPONSES :
-{all_q_block}
+Justifications (questions correctes) :
+{justif_block or 'Aucune.'}
 
-Réponds UNIQUEMENT en JSON valide, sans balises markdown, avec ce format :
-{{
-  "justifications": {{
-    "1": {{"score": 0, "commentaire": "..."}},
-    "4": {{"score": 0, "commentaire": "..."}},
-    "5": {{"score": 0, "commentaire": "..."}},
-    "6": {{"score": 0, "commentaire": "..."}},
-    "9": {{"score": 0, "commentaire": "..."}},
-    "12": {{"score": 0, "commentaire": "..."}}
-  }},
-  "score_moyen": 0.0,
-  "profil_global": "...",
-  "points_forts": "...",
-  "points_faibles": "...",
-  "recommandation": "..."
-}}
+Réponds UNIQUEMENT en JSON sans markdown :
+{{"justifications":{{"1":{{"score":0,"commentaire":"..."}},"4":{{"score":0,"commentaire":"..."}},"5":{{"score":0,"commentaire":"..."}},"6":{{"score":0,"commentaire":"..."}},"9":{{"score":0,"commentaire":"..."}},"12":{{"score":0,"commentaire":"..."}}}},"score_moyen":0.0,"profil_global":"...","points_forts":"...","points_faibles":"...","recommandation":"..."}}
 
-Consignes :
-- justifications : score 0=absente/hors sujet, 1=partielle, 2=correcte, 3=excellente + commentaire court
-- score_moyen : moyenne des scores justifications
-- profil_global : 2 phrases résumant le niveau de l'inspecteur
-- points_forts : ce qu'il maîtrise bien (thèmes, types de désordres)
-- points_faibles : ses lacunes principales avec exemples des erreurs commises
-- recommandation : plan de formation concret, bienveillant, 3-4 phrases en français
+Score justifications: 0=absente, 1=partielle, 2=correcte, 3=excellente.
+profil_global: 2 phrases. points_forts/faibles: concis. recommandation: 3 phrases bienveillantes en français.
 """
     raw   = call_gemini(prompt)
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
