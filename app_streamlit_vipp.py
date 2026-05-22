@@ -1,18 +1,18 @@
 import os
 import ssl
+import json
+import time
 import smtplib
 import sqlite3
-import json
+import urllib.request
+import urllib.error
 from email.message import EmailMessage
 
-import urllib.request
-import time
 import pandas as pd
 import streamlit as st
 
-
 # =========================================================
-# CONFIG APP
+# CONFIG
 # =========================================================
 st.set_page_config(page_title="Questionnaire VIPP", layout="wide")
 
@@ -32,12 +32,9 @@ SMTP_USER      = get_secret("SMTP_USER")
 SMTP_PASSWORD  = get_secret("SMTP_PASSWORD")
 MAIL_FROM      = get_secret("MAIL_FROM", SMTP_USER)
 ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "admin123")
-GROQ_KEY = get_secret("GROQ_API_KEY")
+GROQ_KEY       = get_secret("GROQ_API_KEY")
 
-# Pondération par criticité
 WEIGHTS = {"high": 3, "medium": 2, "low": 1}
-MAX_WEIGHTED_SCORE = sum(WEIGHTS[q["critical"]] for q in []) # calculé plus bas
-
 
 # =========================================================
 # BASE SQLITE
@@ -45,120 +42,89 @@ MAX_WEIGHTED_SCORE = sum(WEIGHTS[q["critical"]] for q in []) # calculé plus bas
 conn = sqlite3.connect("inspecteurs.db", check_same_thread=False)
 c = conn.cursor()
 
-c.execute("""
-    CREATE TABLE IF NOT EXISTS sessions_users(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nom TEXT, prenom TEXT, email TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
+c.execute("""CREATE TABLE IF NOT EXISTS sessions_users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT, prenom TEXT, email TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
-c.execute("""
-    CREATE TABLE IF NOT EXISTS resultats(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nom TEXT, prenom TEXT, email TEXT,
-        score_brut INTEGER, score_pondere INTEGER, score_pondere_max INTEGER,
-        taux_reussite REAL, aptitude TEXT, profil TEXT,
-        score_danger REAL, score_precision REAL, score_justifications REAL,
-        erreurs_critiques INTEGER, sous_estimation INTEGER, sur_estimation INTEGER,
-        rapport TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
+c.execute("""CREATE TABLE IF NOT EXISTS resultats(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT, prenom TEXT, email TEXT,
+    score_brut INTEGER, score_pondere INTEGER, score_pondere_max INTEGER,
+    taux_reussite REAL, aptitude TEXT, profil TEXT,
+    score_danger REAL, score_precision REAL, score_justifications REAL,
+    erreurs_critiques INTEGER, sous_estimation INTEGER, sur_estimation INTEGER,
+    rapport TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 conn.commit()
-
 
 # =========================================================
 # QUESTIONS
 # =========================================================
 QUESTIONS = [
-    # --- POUTRES ---
-    {"id": 1,  "theme": "poutres",                  "title": "Question 1",
+    {"id": 1,  "theme": "poutres",               "title": "Question 1",
      "text": "Fissure(s) régnant sur une hauteur pouvant atteindre et dépasser les deux tiers de la hauteur de la poutre, la poutre présentant par ailleurs une cambrure trop faible, voire nulle et même négative.",
      "correct": "Grave",  "critical": "high",   "requires_justification": True,  "has_image": True,  "alerte": True},
-
-    {"id": 2,  "theme": "poutres",                  "title": "Question 2",
+    {"id": 2,  "theme": "poutres",               "title": "Question 2",
      "text": "Fissuration avec éclatement vertical d'une âme, de type IX, au droit des armatures transversales, due à un enrobage insuffisant de celles-ci, sans trace de rouille ni éclatement du béton.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 3,  "theme": "poutres",                  "title": "Question 3",
+    {"id": 3,  "theme": "poutres",               "title": "Question 3",
      "text": "Fissure(s) longitudinale(s) de type V, suivant le tracé d'un câble sur tout ou partie de sa longueur, le plus souvent en zone de mi-portée, sèche(s) et fine(s) le long d'un seul câble, d'ouverture inférieure à 0,3 mm.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 4,  "theme": "poutres",                  "title": "Question 4",
-     "text": "Fracture horizontale du talon de type VII, pouvant régner sur plusieurs mètres dans la partie centrale de la travée, pouvant être accompagnée d'un rejet horizontal, due à une ou plusieurs des causes cumulées suivantes : cadres de couture de talons insuffisants, effet de poussée dû au gel de l'eau circulant dans des câbles mal injectés, poussée d'expansion par la rouille due à la corrosion d'armatures passives, des conduits et peut-être même des câbles de précontrainte.",
+    {"id": 4,  "theme": "poutres",               "title": "Question 4",
+     "text": "Fracture horizontale du talon de type VII, pouvant régner sur plusieurs mètres dans la partie centrale de la travée, due à une ou plusieurs des causes cumulées suivantes : cadres de couture de talons insuffisants, gel, corrosion d'armatures passives et des câbles de précontrainte.",
      "correct": "Grave",  "critical": "high",   "requires_justification": True,  "has_image": True,  "alerte": True},
-
-    {"id": 5,  "theme": "poutres",                  "title": "Question 5",
-     "text": "Décollements des cachetages des ancrages des câbles de précontrainte longitudinale, avec venue d'eau et/ou accompagnés d'efflorescences et/ou avec traces de rouille, à la limite ancrage ou éléments de câble visibles, en présence concomitante de fissures de type I (Q.1) et II (Q.6).",
+    {"id": 5,  "theme": "poutres",               "title": "Question 5",
+     "text": "Décollements des cachetages des ancrages des câbles de précontrainte longitudinale, avec venue d'eau et/ou traces de rouille, éléments de câble visibles, en présence concomitante de fissures de type I (Q.1) et II (Q.6).",
      "correct": "Grave",  "critical": "high",   "requires_justification": True,  "has_image": True,  "alerte": True},
-
-    {"id": 6,  "theme": "poutres",                  "title": "Question 6",
+    {"id": 6,  "theme": "poutres",               "title": "Question 6",
      "text": "Fissure(s) oblique(s) de type II, proche(s) des zones sur appui, parfois combinée(s) avec des fissures de type I, due(s) à l'effet excessif combiné du moment fléchissant et de l'effort tranchant et/ou à une perte de précontrainte.",
      "correct": "Grave",  "critical": "high",   "requires_justification": True,  "has_image": True,  "alerte": True},
-
-    {"id": 7,  "theme": "poutres",                  "title": "Question 7",
-     "text": "Fissures à la jonction entre l'âme et le hourdis ou le talon, de type VIII, d'ouverture inférieure à 0,3 mm ou avec venue d'eau, dues au retrait gêné de l'âme par les coffrages laissés trop longtemps en place et/ou à une insuffisance d'armatures de couture entre d'une part le hourdis et d'autre part le talon.",
+    {"id": 7,  "theme": "poutres",               "title": "Question 7",
+     "text": "Fissures à la jonction entre l'âme et le hourdis ou le talon, de type VIII, d'ouverture inférieure à 0,3 mm ou avec venue d'eau, dues au retrait gêné de l'âme par les coffrages laissés trop longtemps en place.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 8,  "theme": "poutres",                  "title": "Question 8",
-     "text": "Épaufrures du béton aux angles inférieurs d'une poutre, résultant de chocs lors des opérations de manutention à la construction et/ou aux chocs de véhicules hors gabarit circulant sur la voie franchie, sans mise à nu d'armature.",
+    {"id": 8,  "theme": "poutres",               "title": "Question 8",
+     "text": "Épaufrures du béton aux angles inférieurs d'une poutre, résultant de chocs lors des opérations de manutention ou aux chocs de véhicules hors gabarit, sans mise à nu d'armature.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": False, "alerte": False},
-
-    {"id": 9,  "theme": "poutres",                  "title": "Question 9",
-     "text": "Lacunes de béton en sous-face d'un talon de poutre à mi-travée, là où les armatures passives et actives sont les plus nombreuses, avec réduction des sections des armatures actives et/ou rupture de certaines d'entre elles, dues à un défaut de mise en œuvre du béton (vibrations insuffisantes, densité d'armatures importante) et/ou à une mauvaise formulation du béton.",
+    {"id": 9,  "theme": "poutres",               "title": "Question 9",
+     "text": "Lacunes de béton en sous-face d'un talon de poutre à mi-travée, avec réduction des sections des armatures actives et/ou rupture de certaines d'entre elles, dues à un défaut de mise en œuvre du béton.",
      "correct": "Grave",  "critical": "high",   "requires_justification": True,  "has_image": False, "alerte": True},
-
-    {"id": 10, "theme": "poutres",                  "title": "Question 10",
-     "text": "Fissure(s) localisée(s), épaufrures apparaissant lors des phases de manutention au droit des zones de levage, de type X, risquant de compromettre (fissuration importante, éclatements localisés importants) la résistance locale de la poutre.",
+    {"id": 10, "theme": "poutres",               "title": "Question 10",
+     "text": "Fissure(s) localisée(s), épaufrures apparaissant lors des phases de manutention au droit des zones de levage, de type X, risquant de compromettre la résistance locale de la poutre.",
      "correct": "Moyen",  "critical": "medium", "requires_justification": False, "has_image": True,  "alerte": False},
-
-    # --- HOURDIS INTERMÉDIAIRES ---
-    {"id": 11, "theme": "hourdis_intermediaires",   "title": "Question 11",
-     "text": "Fissuration oblique en « arêtes de poisson » près des abouts des poutres, de type XII, due à l'insuffisance de couture du hourdis sous l'effet de la diffusion de précontrainte et de l'effort tranchant, fines et sèches.",
+    {"id": 11, "theme": "hourdis_intermediaires","title": "Question 11",
+     "text": "Fissuration oblique en arêtes de poisson près des abouts des poutres, de type XII, due à l'insuffisance de couture du hourdis sous l'effet de la diffusion de précontrainte et de l'effort tranchant, fines et sèches.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 12, "theme": "hourdis_intermediaires",   "title": "Question 12",
-     "text": "Fissures longitudinales de type XIV, dues à une insuffisance de résistance ou à des efforts appliqués plus importants que prévus et/ou à l'effet de câbles de précontrainte transversale (câbles mal excentrés, poussée au vide), nombreuses, avec venue d'eau, dans le cas d'un hourdis précontraint transversalement avec traces de corrosion.",
+    {"id": 12, "theme": "hourdis_intermediaires","title": "Question 12",
+     "text": "Fissures longitudinales de type XIV, nombreuses, avec venue d'eau et traces de corrosion, dans le cas d'un hourdis précontraint transversalement.",
      "correct": "Grave",  "critical": "high",   "requires_justification": True,  "has_image": True,  "alerte": True},
-
-    {"id": 13, "theme": "hourdis_intermediaires",   "title": "Question 13",
-     "text": "Éclatement, décollement du béton de type XV, localisés, avec éclatements par plaques de certaines zones du hourdis, sans réduction notable des sections des armatures apparentes et/ou, pour les hourdis précontraints, avec mise à nu des armatures actives sans réduction notable de leurs sections.",
+    {"id": 13, "theme": "hourdis_intermediaires","title": "Question 13",
+     "text": "Éclatement, décollement du béton de type XV, localisés, sans réduction notable des sections des armatures apparentes et/ou avec mise à nu des armatures actives sans réduction notable de leurs sections.",
      "correct": "Moyen",  "critical": "medium", "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 14, "theme": "hourdis_intermediaires",   "title": "Question 14",
-     "text": "Traces de circulation d'eau à travers le hourdis intermédiaire, liées à un défaut d'étanchéité en extrados, dues à l'absence totale ou partielle de chape d'étanchéité et/ou à des défauts de mise en œuvre de la chape, notamment aux raccordements sur les contre-bordures, les avaloirs, les joints de chaussée.",
+    {"id": 14, "theme": "hourdis_intermediaires","title": "Question 14",
+     "text": "Traces de circulation d'eau à travers le hourdis intermédiaire, liées à un défaut d'étanchéité en extrados.",
      "correct": "Moyen",  "critical": "medium", "requires_justification": False, "has_image": False, "alerte": False},
-
-    # --- HOURDIS EN ENCORBELLEMENT ---
-    {"id": 15, "theme": "hourdis_encorbellement",   "title": "Question 15",
-     "text": "Fissures de type XVII, transversales, réparties sur toute la longueur de l'encorbellement, dues au retrait gêné du béton de l'encorbellement coulé postérieurement à la poutre de rive, avec venue d'eau et/ou accompagnées d'efflorescences.",
+    {"id": 15, "theme": "hourdis_encorbellement","title": "Question 15",
+     "text": "Fissures de type XVII, transversales, réparties sur toute la longueur de l'encorbellement, avec venue d'eau et/ou accompagnées d'efflorescences.",
      "correct": "Moyen",  "critical": "medium", "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 16, "theme": "hourdis_encorbellement",   "title": "Question 16",
-     "text": "Fissuration oblique en « arêtes de poisson » près des abouts des poutres, de type XX, due à l'insuffisance d'armatures de couture du hourdis sous l'effet de la diffusion de précontrainte et de l'effort tranchant, avec venue d'eau et coulures de rouille.",
+    {"id": 16, "theme": "hourdis_encorbellement","title": "Question 16",
+     "text": "Fissuration oblique en arêtes de poisson près des abouts des poutres, de type XX, avec venue d'eau et coulures de rouille.",
      "correct": "Grave",  "critical": "high",   "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 17, "theme": "hourdis_encorbellement",   "title": "Question 17",
-     "text": "Décollements des cachetages des ancrages des câbles de précontrainte transversale, secs, dus à une mauvaise adhérence du matériau de cachetage et/ou à un retrait excessif lors de la mise en œuvre du cachetage.",
+    {"id": 17, "theme": "hourdis_encorbellement","title": "Question 17",
+     "text": "Décollements des cachetages des ancrages des câbles de précontrainte transversale, secs, dus à une mauvaise adhérence du matériau de cachetage.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": False, "alerte": False},
-
-    # --- ENTRETOISES ---
-    {"id": 18, "theme": "entretoises",              "title": "Question 18",
-     "text": "Fissurations obliques diverses de type XXII, verticales ou inclinées, sur entretoise en béton armé, dues à l'application d'efforts dissymétriques lors des phasages de mise en tension des poutres et du bétonnage du tablier et/ou à une insuffisante résistance aux effets de la flexion transversale, avec fissure(s) d'ouverture supérieure à 0,6 mm.",
+    {"id": 18, "theme": "entretoises",           "title": "Question 18",
+     "text": "Fissurations obliques diverses de type XXII sur entretoise en béton armé, avec fissure(s) d'ouverture supérieure à 0,6 mm.",
      "correct": "Grave",  "critical": "high",   "requires_justification": False, "has_image": True,  "alerte": False},
-
-    {"id": 19, "theme": "entretoises",              "title": "Question 19",
-     "text": "Éclatement localisé de béton avec mise à nu d'armature(s) de type XXIII, dans l'angle inférieur d'une entretoise, dû à la poussée exercée par l'oxydation des armatures sur le béton d'enrobage, sans réduction notable des sections des armatures passives apparentes.",
+    {"id": 19, "theme": "entretoises",           "title": "Question 19",
+     "text": "Éclatement localisé de béton avec mise à nu d'armature(s) de type XXIII dans l'angle inférieur d'une entretoise, sans réduction notable des sections des armatures passives apparentes.",
      "correct": "Moyen",  "critical": "medium", "requires_justification": False, "has_image": True,  "alerte": False},
-
-    # --- DÉFAUTS DU MATÉRIAU BÉTON ---
-    {"id": 20, "theme": "defauts_beton",            "title": "Question 20",
-     "text": "Efflorescences et stalactites sèches résultant de l'entraînement de la chaux contenue dans le béton par les circulations d'eaux internes et de son dépôt sous forme de calcite en parement.",
+    {"id": 20, "theme": "defauts_beton",         "title": "Question 20",
+     "text": "Efflorescences et stalactites sèches résultant de l'entraînement de la chaux contenue dans le béton par les circulations d'eaux internes.",
      "correct": "Bénin",  "critical": "low",    "requires_justification": False, "has_image": False, "alerte": False},
 ]
 
-QUESTION_MAP = {q["id"]: q for q in QUESTIONS}
+QUESTION_MAP       = {q["id"]: q for q in QUESTIONS}
 MAX_WEIGHTED_SCORE = sum(WEIGHTS[q["critical"]] for q in QUESTIONS)
 
 SECTION_LABELS = {
@@ -174,7 +140,6 @@ QUESTION_IMAGES = {
     for qid in [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 15, 16, 18, 19]
 }
 
-
 # =========================================================
 # SESSION
 # =========================================================
@@ -186,7 +151,6 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-
 # =========================================================
 # HELPERS
 # =========================================================
@@ -194,8 +158,10 @@ def answer_order(v):
     return {"Bénin": 1, "Moyen": 2, "Grave": 3}.get(v, 0)
 
 
+# =========================================================
+# APPEL GROQ
+# =========================================================
 def call_groq(prompt: str, retries: int = 3) -> str:
-    """Appel à l'API Groq — gratuit, rapide, fiable."""
     if not GROQ_KEY:
         return "⚠️ Clé API Groq non configurée."
     payload = json.dumps({
@@ -207,10 +173,7 @@ def call_groq(prompt: str, retries: int = 3) -> str:
     req = urllib.request.Request(
         "https://api.groq.com/openai/v1/chat/completions",
         data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {GROQ_KEY}",
-        },
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_KEY}"},
         method="POST",
     )
     for attempt in range(retries):
@@ -228,16 +191,16 @@ def call_groq(prompt: str, retries: int = 3) -> str:
     return "⚠️ Groq indisponible après plusieurs tentatives."
 
 
+# =========================================================
+# ANALYSE LOCALE (fallback sans IA)
+# =========================================================
 def fallback_analysis(justifs: dict, result_data: dict) -> dict:
-    """Analyse locale sans IA — utilisée si Groq est indisponible."""
     score_brut = result_data["score_brut"]
     total      = result_data["total"]
     danger     = result_data["score_danger"]
     under      = result_data["sous_estimation"]
-    over       = result_data["sur_estimation"]
     critical   = result_data["erreurs_critiques"]
 
-    # Profil global
     if score_brut == total:
         profil = "L'inspecteur maîtrise parfaitement la classification IQOA sur l'ensemble des thèmes."
     elif danger >= 80 and critical == 0:
@@ -247,27 +210,21 @@ def fallback_analysis(justifs: dict, result_data: dict) -> dict:
     elif under >= 4:
         profil = "Tendance marquée à sous-estimer la gravité des désordres structurels."
     else:
-        profil = f"Niveau intermédiaire avec {score_brut}/{total} bonnes réponses. Des points restent à consolider."
+        profil = f"Niveau intermédiaire avec {score_brut}/{total} bonnes réponses."
 
-    # Points forts / faibles basés sur les thèmes
-    theme_ok  = [t for t, v in result_data.get("theme_pct", {}).items() if v >= 75]
-    theme_nok = [t for t, v in result_data.get("theme_pct", {}).items() if v < 50]
-    forts     = ", ".join(theme_ok) if theme_ok else "Aucun thème dominant identifié."
-    faibles   = ", ".join(theme_nok) if theme_nok else "Aucune faiblesse majeure détectée."
+    theme_pct  = result_data.get("theme_pct", {})
+    forts      = ", ".join([t for t, v in theme_pct.items() if v >= 75]) or "Aucun thème dominant."
+    faibles    = ", ".join([t for t, v in theme_pct.items() if v < 50]) or "Aucune faiblesse majeure."
 
-    # Recommandation
     if score_brut == total:
         reco = "Score parfait. Maintien des acquis par retour d'expérience recommandé."
     elif critical >= 3:
         reco = "Formation prioritaire sur la détection des désordres graves (Alerte). Révision du catalogue IQOA recommandée."
     elif under >= 4:
         reco = "Sensibilisation au risque de sous-estimation des désordres structurels. Étude de cas pratiques recommandée."
-    elif result_data["taux_reussite"] >= 90:
-        reco = "Niveau satisfaisant. Consolidation ciblée sur les thèmes : " + faibles
     else:
-        reco = "Formation ciblée recommandée sur les thèmes suivants : " + faibles
+        reco = f"Formation ciblée recommandée sur les thèmes : {faibles}."
 
-    # Justifications basiques
     keywords_map = {
         1:  ["fissure", "cambrure", "hauteur", "grave", "poutre"],
         4:  ["fracture", "talon", "gel", "câble", "rouille", "corrosion"],
@@ -276,8 +233,7 @@ def fallback_analysis(justifs: dict, result_data: dict) -> dict:
         9:  ["lacune", "talon", "armature", "rupture", "section"],
         12: ["fissure", "longitudinale", "hourdis", "corrosion", "eau", "câble"],
     }
-    justif_results = {}
-    scores = []
+    justif_results, scores = {}, []
     for qid, kws in keywords_map.items():
         txt   = (justifs.get(qid, "") or "").lower()
         found = [k for k in kws if k in txt]
@@ -290,46 +246,40 @@ def fallback_analysis(justifs: dict, result_data: dict) -> dict:
         elif s == 2:
             comment = f"Correcte — identifie : {', '.join(found)}."
         else:
-            comment = f"Excellente — couvre bien les éléments clés : {', '.join(found)}."
+            comment = f"Excellente — couvre les éléments clés : {', '.join(found)}."
         justif_results[str(qid)] = {"score": s, "commentaire": comment}
-
-    score_moyen = round(sum(scores) / len(scores), 2) if scores else 0.0
 
     return {
         "justifications": justif_results,
-        "score_moyen": score_moyen,
-        "profil_global": profil,
-        "points_forts": forts,
+        "score_moyen":    round(sum(scores) / len(scores), 2) if scores else 0.0,
+        "profil_global":  profil,
+        "points_forts":   forts,
         "points_faibles": faibles,
         "recommandation": reco,
     }
-    """
-    Un seul appel Gemini :
-    - analyse toutes les réponses (bonnes et mauvaises)
-    - analyse les justifications des questions critiques
-    - génère un rapport de profil + recommandation personnalisée
-    """
-    # Bloc réponses — uniquement les erreurs pour alléger le prompt
+
+
+# =========================================================
+# ANALYSE IA (Groq) + fallback
+# =========================================================
+def analyze_and_recommend(justifs: dict, result_data: dict) -> dict:
     errors_block = ""
     for q in QUESTIONS:
-        qid = q["id"]
-        user_ans = result_data["all_answers"].get(qid, "?")
+        qid      = q["id"]
+        user_ans = result_data["all_answers"].get(qid, "Grave")
         correct  = q["correct"]
         if user_ans != correct:
             justif = ""
             if q["requires_justification"]:
-                justif = f" | Justification : {justifs.get(qid, '').strip() or '(aucune)'}"
-            errors_block += f"Q{qid} [{q['theme']}] : répondu {user_ans} / attendu {correct}{justif}\n"
+                justif = f" | Justif: {justifs.get(qid, '').strip() or '(aucune)'}"
+            errors_block += f"Q{qid}[{q['theme']}]: répondu {user_ans}/attendu {correct}{justif}\n"
 
-    # Bloc justifications correctes aussi
-    justif_block = ""
+    justif_correct = ""
     for q in QUESTIONS:
         if q["requires_justification"]:
             qid = q["id"]
-            user_ans = result_data["all_answers"].get(qid, "?")
-            correct  = q["correct"]
-            if user_ans == correct:
-                justif_block += f"Q{qid} [correct] : {justifs.get(qid, '').strip() or '(aucune)'}\n"
+            if result_data["all_answers"].get(qid, "Grave") == q["correct"]:
+                justif_correct += f"Q{qid}: {justifs.get(qid, '').strip() or '(aucune)'}\n"
 
     prompt = f"""Expert inspection ponts VIPP. Résultats inspecteur :
 Score: {result_data['score_brut']}/{result_data['total']} ({result_data['taux_reussite']}%)
@@ -337,59 +287,56 @@ Score pondéré: {result_data['score_pondere']}/{result_data['score_pondere_max'
 Danger: {result_data['score_danger']}% | Précision: {result_data['score_precision']}%
 Sous-estim: {result_data['sous_estimation']} | Sur-estim: {result_data['sur_estimation']} | Erreurs critiques: {result_data['erreurs_critiques']}
 
-Erreurs commises :
-{errors_block or 'Aucune erreur.'}
+Erreurs:
+{errors_block or 'Aucune.'}
 
-Justifications (questions correctes) :
-{justif_block or 'Aucune.'}
+Justifications questions critiques correctes:
+{justif_correct or 'Aucune.'}
 
-Réponds UNIQUEMENT en JSON sans markdown :
+Réponds UNIQUEMENT en JSON sans markdown:
 {{"justifications":{{"1":{{"score":0,"commentaire":"..."}},"4":{{"score":0,"commentaire":"..."}},"5":{{"score":0,"commentaire":"..."}},"6":{{"score":0,"commentaire":"..."}},"9":{{"score":0,"commentaire":"..."}},"12":{{"score":0,"commentaire":"..."}}}},"score_moyen":0.0,"profil_global":"...","points_forts":"...","points_faibles":"...","recommandation":"..."}}
 
-Score justifications: 0=absente, 1=partielle, 2=correcte, 3=excellente.
-profil_global: 2 phrases. points_forts/faibles: concis. recommandation: 3 phrases bienveillantes en français.
-"""
-    raw   = call_groq(prompt)
+Score justif: 0=absente,1=partielle,2=correcte,3=excellente. Recommandation: 3 phrases bienveillantes en français."""
+
+    raw = call_groq(prompt)
     if raw.startswith("⚠️"):
-        # Groq indisponible → fallback analyse locale
         return fallback_analysis(justifs, result_data)
+
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(clean)
     except Exception:
-        return {
-            "justifications": {},
-            "score_moyen": 0.0,
-            "profil_global": "Analyse indisponible.",
-            "points_forts": "",
-            "points_faibles": "",
-            "recommandation": raw,
-        }
+        return fallback_analysis(justifs, result_data)
 
 
+# =========================================================
+# ANALYSE SOUMISSION
+# =========================================================
 def analyze_submission(nom, prenom, email):
-    score_brut = 0
-    score_pondere = 0
-    total = len(QUESTIONS)
-    under_est = 0
-    over_est = 0
-    critical_errors = 0
-    high_correct = 0
-    high_total = 0
+    score_brut, score_pondere = 0, 0
+    under_est, over_est, critical_errors = 0, 0, 0
+    high_correct, high_total = 0, 0
     erreurs_details = []
+    theme_scores = {}
 
     for q in QUESTIONS:
-        qid = q["id"]
+        qid      = q["id"]
         user_ans = st.session_state.answers.get(qid, "Grave")
-        correct = q["correct"]
-        w = WEIGHTS[q["critical"]]
+        correct  = q["correct"]
+        w        = WEIGHTS[q["critical"]]
+        theme    = q["theme"]
+
+        if theme not in theme_scores:
+            theme_scores[theme] = {"correct": 0, "total": 0}
+        theme_scores[theme]["total"] += 1
 
         if q["critical"] == "high":
             high_total += 1
 
         if user_ans == correct:
-            score_brut += 1
+            score_brut    += 1
             score_pondere += w
+            theme_scores[theme]["correct"] += 1
             if q["critical"] == "high":
                 high_correct += 1
         else:
@@ -404,43 +351,15 @@ def analyze_submission(nom, prenom, email):
                 etype = "réponse vide"
             if q["critical"] == "high":
                 critical_errors += 1
-            erreurs_details.append(f"Q{qid}: répondu '{user_ans}' / attendu '{correct}' ({etype})")
+            erreurs_details.append(f"Q{qid}: '{user_ans}' / attendu '{correct}' ({etype})")
 
-    # Scores dimensionnels
-    score_danger    = round(high_correct / high_total * 100, 1) if high_total else 0.0
-    total_errors    = under_est + over_est
-    score_precision = round((1 - under_est / max(total_errors, 1)) * 100, 1) if total_errors else 100.0
-    taux            = round(score_brut / total * 100, 1)
+    total         = len(QUESTIONS)
+    taux          = round(score_brut / total * 100, 1)
+    score_danger  = round(high_correct / high_total * 100, 1) if high_total else 0.0
+    total_errors  = under_est + over_est
+    score_prec    = round((1 - under_est / max(total_errors, 1)) * 100, 1) if total_errors else 100.0
+    theme_pct     = {t: round(v["correct"] / v["total"] * 100, 1) for t, v in theme_scores.items()}
 
-    # Calcul pourcentages par thème
-    theme_pct = {}
-    for q in QUESTIONS:
-        t = q["theme"]
-        if t not in theme_pct:
-            theme_pct[t] = {"correct": 0, "total": 0}
-        theme_pct[t]["total"] += 1
-        if st.session_state.answers.get(q["id"], "Grave") == q["correct"]:
-            theme_pct[t]["correct"] += 1
-    theme_pct = {t: round(v["correct"]/v["total"]*100, 1) for t, v in theme_pct.items()}
-
-    # Un seul appel IA — toutes les réponses + justifications + recommandation
-    ai_result = analyze_and_recommend_with_ai(st.session_state.justifs, {
-        "score_brut": score_brut, "total": total,
-        "score_pondere": score_pondere, "score_pondere_max": MAX_WEIGHTED_SCORE,
-        "taux_reussite": taux, "score_danger": score_danger,
-        "score_precision": score_precision,
-        "sous_estimation": under_est, "sur_estimation": over_est,
-        "erreurs_critiques": critical_errors,
-        "details_erreurs": " | ".join(erreurs_details) or "Aucune erreur.",
-        "all_answers": st.session_state.answers,
-        "theme_pct": theme_pct,
-    })
-    score_justifs    = ai_result.get("score_moyen", 0.0)
-    synthese_justifs = ai_result.get("profil_global", "")
-    recommandation   = ai_result.get("recommandation", "")
-    st.session_state.ai_analysis = ai_result
-
-    # Aptitude
     if score_brut == total and critical_errors == 0:
         aptitude = "Apte — Score parfait"
     elif score_pondere >= round(MAX_WEIGHTED_SCORE * 0.90) and critical_errors == 0:
@@ -448,103 +367,121 @@ def analyze_submission(nom, prenom, email):
     else:
         aptitude = "Non apte — Formation requise"
 
-    # Profil composite
-    if score_danger >= 90 and score_justifs >= 2.5:
+    if score_danger >= 90 and score_brut >= 18:
         profil = "Expert confirmé"
-    elif score_danger >= 75 and score_justifs >= 1.5:
+    elif score_danger >= 75 and score_brut >= 15:
         profil = "Bon niveau opérationnel"
     elif score_danger >= 60:
         profil = "Niveau intermédiaire — vigilance sur les cas graves"
     elif under_est >= 4:
-        profil = "Tendance à sous-estimer la gravité des désordres"
+        profil = "Tendance à sous-estimer la gravité"
     elif over_est >= 4:
-        profil = "Tendance à sur-estimer la gravité des désordres"
+        profil = "Tendance à sur-estimer la gravité"
     else:
         profil = "Niveau insuffisant — formation prioritaire"
 
-    result_data = {
-        "nom": nom, "prenom": prenom, "email": email,
+    ai_data = {
         "score_brut": score_brut, "total": total,
         "score_pondere": score_pondere, "score_pondere_max": MAX_WEIGHTED_SCORE,
-        "taux_reussite": taux,
-        "aptitude": aptitude,         "profil": profil,
-        "points_forts":  ai_result.get("points_forts", ""),
-        "points_faibles": ai_result.get("points_faibles", ""),
-        "score_danger": score_danger,
-        "score_precision": score_precision,
-        "score_justifications": round(score_justifs, 2),
+        "taux_reussite": taux, "score_danger": score_danger,
+        "score_precision": score_prec,
         "sous_estimation": under_est, "sur_estimation": over_est,
         "erreurs_critiques": critical_errors,
         "details_erreurs": " | ".join(erreurs_details) or "Aucune erreur.",
-        "synthese_justifs": synthese_justifs,
-        "ai_justifs": ai_result.get("justifications", {}),
+        "all_answers": st.session_state.answers,
+        "theme_pct": theme_pct,
     }
 
-    return result_data
+    ai_result = analyze_and_recommend(st.session_state.justifs, ai_data)
+    st.session_state.ai_analysis = ai_result
+
+    return {
+        "nom": nom, "prenom": prenom, "email": email,
+        "score_brut": score_brut, "total": total,
+        "score_pondere": score_pondere, "score_pondere_max": MAX_WEIGHTED_SCORE,
+        "taux_reussite": taux, "aptitude": aptitude, "profil": profil,
+        "score_danger": score_danger, "score_precision": score_prec,
+        "score_justifications": round(ai_result.get("score_moyen", 0.0), 2),
+        "sous_estimation": under_est, "sur_estimation": over_est,
+        "erreurs_critiques": critical_errors,
+        "details_erreurs": " | ".join(erreurs_details) or "Aucune erreur.",
+        "profil_global":  ai_result.get("profil_global", ""),
+        "points_forts":   ai_result.get("points_forts", ""),
+        "points_faibles": ai_result.get("points_faibles", ""),
+        "recommandation": ai_result.get("recommandation", ""),
+        "ai_justifs":     ai_result.get("justifications", {}),
+    }
 
 
+# =========================================================
+# RAPPORT TEXTE
+# =========================================================
 def generate_report(r):
     justifs_section = ""
     for qid, data in r.get("ai_justifs", {}).items():
-        stars = "★" * data["score"] + "☆" * (3 - data["score"])
-        justifs_section += f"  Q{qid} [{stars}] : {data['commentaire']}\n"
+        s     = data.get("score", 0)
+        stars = "★" * s + "☆" * (3 - s)
+        justifs_section += f"  Q{qid} [{stars}] : {data.get('commentaire', '')}\n"
     if not justifs_section:
         justifs_section = "  Aucune justification analysée.\n"
 
-    return f"""
-RAPPORT INDIVIDUEL D'ÉVALUATION — TEST IQOA VIPP
+    return f"""RAPPORT INDIVIDUEL D'ÉVALUATION — TEST IQOA VIPP
 ==================================================
 Employé : {r['prenom']} {r['nom']}
 Email   : {r['email']}
 
 1. RÉSULTATS GLOBAUX
 --------------------
-Score brut       : {r['score_brut']} / {r['total']}
-Score pondéré    : {r['score_pondere']} / {r['score_pondere_max']}
-Taux de réussite : {r['taux_reussite']} %
-Aptitude         : {r['aptitude']}
-Profil           : {r['profil']}
+Score brut        : {r['score_brut']} / {r['total']}
+Score pondéré     : {r['score_pondere']} / {r['score_pondere_max']}
+Taux de réussite  : {r['taux_reussite']} %
+Aptitude          : {r['aptitude']}
+Profil            : {r['profil']}
 
 2. ANALYSE DES 3 DIMENSIONS
 ----------------------------
-Détection du danger (questions Alerte) : {r['score_danger']} %
-Précision du jugement                  : {r['score_precision']} %
-Qualité des justifications             : {r['score_justifications']} / 3
+Détection du danger   : {r['score_danger']} %
+Précision du jugement : {r['score_precision']} %
+Qualité justifications: {r['score_justifications']} / 3
+Sous-estimations      : {r['sous_estimation']}
+Sur-estimations       : {r['sur_estimation']}
+Erreurs critiques     : {r['erreurs_critiques']}
 
-Sous-estimations  : {r['sous_estimation']}
-Sur-estimations   : {r['sur_estimation']}
-Erreurs critiques : {r['erreurs_critiques']}
-
-3. ANALYSE IA DES JUSTIFICATIONS
-----------------------------------
+3. ANALYSE DES JUSTIFICATIONS
+------------------------------
 {justifs_section}
-Profil global : {r.get('synthese_justifs', '')}
 
-4. POINTS FORTS
+4. PROFIL GLOBAL
+----------------
+{r.get('profil_global', 'Non disponible.')}
+
+5. POINTS FORTS
 ---------------
 {r.get('points_forts', 'Non disponible.')}
 
-5. POINTS FAIBLES
+6. POINTS FAIBLES
 -----------------
 {r.get('points_faibles', 'Non disponible.')}
 
-6. RECOMMANDATION PERSONNALISÉE (générée par IA)
--------------------------------------------------
+7. RECOMMANDATION PERSONNALISÉE
+--------------------------------
 {r.get('recommandation', 'Non disponible.')}
 
-7. DÉTAIL DES ERREURS
+8. DÉTAIL DES ERREURS
 ----------------------
-{r['details_erreurs']}
-""".strip()
+{r['details_erreurs']}""".strip()
 
 
+# =========================================================
+# EMAIL
+# =========================================================
 def send_report_email(to_email, subject, body):
     if not (SMTP_HOST and SMTP_PORT and SMTP_USER and SMTP_PASSWORD and MAIL_FROM):
         raise RuntimeError("Configuration email incomplète.")
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = MAIL_FROM
-    msg["To"] = to_email
+    msg["From"]    = MAIL_FROM
+    msg["To"]      = to_email
     msg.set_content(body)
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as srv:
@@ -584,33 +521,26 @@ if st.session_state.page == "home":
         pwd = st.text_input("Mot de passe admin", type="password")
         if pwd == ADMIN_PASSWORD:
             df_s = pd.read_sql_query("SELECT nom, prenom, email, created_at FROM sessions_users ORDER BY created_at DESC", conn)
-            df_r = pd.read_sql_query("""
-                SELECT id, nom, prenom, email, score_brut, score_pondere, score_pondere_max,
-                       taux_reussite, aptitude, profil, score_danger, score_precision,
-                       score_justifications, erreurs_critiques, created_at, rapport
-                FROM resultats ORDER BY created_at DESC
-            """, conn)
+            df_r = pd.read_sql_query("""SELECT id, nom, prenom, email, score_brut, score_pondere,
+                taux_reussite, aptitude, profil, score_danger, score_precision,
+                score_justifications, erreurs_critiques, created_at, rapport
+                FROM resultats ORDER BY created_at DESC""", conn)
             st.markdown("### Connexions")
             st.dataframe(df_s, use_container_width=True)
             st.markdown("### Résultats")
             st.dataframe(df_r.drop(columns=["rapport"]), use_container_width=True)
             if not df_r.empty:
                 st.markdown("### Consulter un rapport")
-                sel_id = st.selectbox(
-                    "Choisir un résultat", df_r["id"].tolist(),
+                sel_id = st.selectbox("Choisir un résultat", df_r["id"].tolist(),
                     format_func=lambda x: (
                         f"ID {x} — {df_r[df_r['id']==x]['prenom'].iloc[0]} "
                         f"{df_r[df_r['id']==x]['nom'].iloc[0]} — "
-                        f"{df_r[df_r['id']==x]['aptitude'].iloc[0]}"
-                    ),
-                )
+                        f"{df_r[df_r['id']==x]['aptitude'].iloc[0]}"))
                 sel = df_r[df_r["id"] == sel_id].iloc[0]
                 with st.expander("Rapport complet", expanded=True):
                     st.text(sel["rapport"])
-                st.download_button(
-                    "Télécharger", data=sel["rapport"].encode("utf-8"),
-                    file_name=f"rapport_{sel['nom']}_{sel['prenom']}.txt", mime="text/plain",
-                )
+                st.download_button("Télécharger", data=sel["rapport"].encode("utf-8"),
+                    file_name=f"rapport_{sel['nom']}_{sel['prenom']}.txt", mime="text/plain")
 
 
 # =========================================================
@@ -625,13 +555,13 @@ elif st.session_state.page == "accueil":
     st.write("🟩 **Bénin** — (1) — Pas d'alerte nécessaire")
     st.info("ℹ️ Les questions critiques (Alerte) ont un poids plus important dans l'évaluation.")
     if st.button("Lancer le test"):
-        st.session_state.page = "quiz"
-        st.session_state.question = 1
-        st.session_state.answers = {}
-        st.session_state.justifs = {}
+        st.session_state.page         = "quiz"
+        st.session_state.question     = 1
+        st.session_state.answers      = {}
+        st.session_state.justifs      = {}
         st.session_state.result_saved = False
-        st.session_state.mail_sent = False
-        st.session_state.ai_analysis = None
+        st.session_state.mail_sent    = False
+        st.session_state.ai_analysis  = None
         st.rerun()
     if st.button("Déconnexion"):
         st.session_state.page = "home"
@@ -664,20 +594,16 @@ elif st.session_state.page == "quiz":
 
     options = ["Grave", "Moyen", "Bénin"]
     cur = st.session_state.answers.get(qid, "Grave")
-    sel = st.radio(
-        "Choisir la classe IQOA", options, index=options.index(cur),
+    sel = st.radio("Choisir la classe IQOA", options, index=options.index(cur),
         key=f"q_{qid}_radio",
-        format_func=lambda x: {"Grave": "🟥 Grave", "Moyen": "🟧 Moyen", "Bénin": "🟩 Bénin"}[x],
-    )
+        format_func=lambda x: {"Grave": "🟥 Grave", "Moyen": "🟧 Moyen", "Bénin": "🟩 Bénin"}[x])
     st.session_state.answers[qid] = sel
 
     if q["requires_justification"]:
-        justif = st.text_area(
-            "Justification obligatoire — analysée par IA",
+        justif = st.text_area("Justification obligatoire — analysée par IA",
             value=st.session_state.justifs.get(qid, ""),
             key=f"q_{qid}_justif",
-            placeholder="Expliquez brièvement votre diagnostic (cause, mécanisme, conséquence).",
-        )
+            placeholder="Expliquez votre diagnostic (cause, mécanisme, conséquence).")
         st.session_state.justifs[qid] = justif
 
     col1, col2 = st.columns(2)
@@ -703,7 +629,7 @@ elif st.session_state.page == "quiz":
 elif st.session_state.page == "result":
     st.title("Résultat du test")
 
-    with st.spinner("Analyse IA en cours..."):
+    with st.spinner("Analyse en cours..."):
         r = analyze_submission(st.session_state.nom, st.session_state.prenom, st.session_state.email)
     report_text = generate_report(r)
 
@@ -717,82 +643,64 @@ elif st.session_state.page == "result":
 
     st.markdown(f"**Profil :** {r['profil']}")
 
-    # Métriques
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Score brut",      f"{r['score_brut']} / {r['total']}")
-    col2.metric("Score pondéré",   f"{r['score_pondere']} / {r['score_pondere_max']}")
-    col3.metric("Taux réussite",   f"{r['taux_reussite']} %")
+    col1.metric("Score brut",       f"{r['score_brut']} / {r['total']}")
+    col2.metric("Score pondéré",    f"{r['score_pondere']} / {r['score_pondere_max']}")
+    col3.metric("Taux réussite",    f"{r['taux_reussite']} %")
     col4.metric("Erreurs critiques", r['erreurs_critiques'])
 
     col5, col6, col7 = st.columns(3)
-    col5.metric("Détection danger",     f"{r['score_danger']} %")
-    col6.metric("Précision jugement",   f"{r['score_precision']} %")
+    col5.metric("Détection danger",      f"{r['score_danger']} %")
+    col6.metric("Précision jugement",    f"{r['score_precision']} %")
     col7.metric("Qualité justifications", f"{r['score_justifications']} / 3")
 
-    # Analyse justifications IA
-    if st.session_state.ai_analysis:
-        justifs_ai = st.session_state.ai_analysis.get("justifications", {})
-        if justifs_ai:
-            st.markdown("### 📝 Analyse des justifications")
-            for qid_str, data in justifs_ai.items():
-                score = data.get("score", 0)
-                stars = "★" * score + "☆" * (3 - score)
-                st.markdown(f"**Q{qid_str}** [{stars}] — {data.get('commentaire', '')}")
+    # Justifications
+    ai = st.session_state.ai_analysis or {}
+    justifs_ai = ai.get("justifications", {})
+    if justifs_ai:
+        st.markdown("### 📝 Analyse des justifications")
+        for qid_str, data in justifs_ai.items():
+            s     = data.get("score", 0)
+            stars = "★" * s + "☆" * (3 - s)
+            st.markdown(f"**Q{qid_str}** [{stars}] — {data.get('commentaire', '')}")
 
     # Profil IA
-    if st.session_state.ai_analysis:
-        profil_global  = st.session_state.ai_analysis.get("profil_global", "")
-        points_forts   = st.session_state.ai_analysis.get("points_forts", "")
-        points_faibles = st.session_state.ai_analysis.get("points_faibles", "")
-        recommandation = st.session_state.ai_analysis.get("recommandation", "")
-
-        if profil_global:
-            st.markdown("### 🧠 Profil global")
-            st.write(profil_global)
-        if points_forts:
-            st.markdown("### ✅ Points forts")
-            st.write(points_forts)
-        if points_faibles:
-            st.markdown("### ⚠️ Points faibles")
-            st.write(points_faibles)
-        if recommandation:
-            st.markdown("### 🎯 Recommandation personnalisée")
-            st.write(recommandation)
+    if ai.get("profil_global"):
+        st.markdown("### 🧠 Profil global")
+        st.write(ai["profil_global"])
+    if ai.get("points_forts"):
+        st.markdown("### ✅ Points forts")
+        st.write(ai["points_forts"])
+    if ai.get("points_faibles"):
+        st.markdown("### ⚠️ Points faibles")
+        st.write(ai["points_faibles"])
+    if ai.get("recommandation"):
+        st.markdown("### 🎯 Recommandation personnalisée")
+        st.write(ai["recommandation"])
 
     with st.expander("Voir le rapport complet"):
         st.text(report_text)
 
-    st.download_button(
-        "Télécharger le rapport",
-        data=report_text.encode("utf-8"),
-        file_name=f"rapport_{st.session_state.nom}_{st.session_state.prenom}.txt",
-        mime="text/plain",
-    )
+    st.download_button("Télécharger le rapport", data=report_text.encode("utf-8"),
+        file_name=f"rapport_{st.session_state.nom}_{st.session_state.prenom}.txt", mime="text/plain")
 
     if not st.session_state.result_saved:
-        c.execute("""
-            INSERT INTO resultats(nom, prenom, email, score_brut, score_pondere, score_pondere_max,
-                taux_reussite, aptitude, profil, score_danger, score_precision,
-                score_justifications, erreurs_critiques, sous_estimation, sur_estimation, rapport)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            r["nom"], r["prenom"], r["email"],
-            r["score_brut"], r["score_pondere"], r["score_pondere_max"],
-            r["taux_reussite"], r["aptitude"], r["profil"],
-            r["score_danger"], r["score_precision"], r["score_justifications"],
-            r["erreurs_critiques"], r["sous_estimation"], r["sur_estimation"],
-            report_text,
-        ))
+        c.execute("""INSERT INTO resultats(nom, prenom, email, score_brut, score_pondere, score_pondere_max,
+            taux_reussite, aptitude, profil, score_danger, score_precision,
+            score_justifications, erreurs_critiques, sous_estimation, sur_estimation, rapport)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (r["nom"], r["prenom"], r["email"],
+             r["score_brut"], r["score_pondere"], r["score_pondere_max"],
+             r["taux_reussite"], r["aptitude"], r["profil"],
+             r["score_danger"], r["score_precision"], r["score_justifications"],
+             r["erreurs_critiques"], r["sous_estimation"], r["sur_estimation"],
+             report_text))
         conn.commit()
         st.session_state.result_saved = True
 
     if not st.session_state.mail_sent:
         try:
-            send_report_email(
-                to_email=st.session_state.email,
-                subject="Votre rapport d'évaluation VIPP — TEST IQOA",
-                body=report_text,
-            )
+            send_report_email(st.session_state.email, "Votre rapport d'évaluation VIPP — TEST IQOA", report_text)
             st.success(f"Rapport envoyé à {st.session_state.email}.")
             st.session_state.mail_sent = True
         except Exception as e:
