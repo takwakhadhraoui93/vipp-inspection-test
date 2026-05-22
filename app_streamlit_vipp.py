@@ -32,7 +32,7 @@ SMTP_USER      = get_secret("SMTP_USER")
 SMTP_PASSWORD  = get_secret("SMTP_PASSWORD")
 MAIL_FROM      = get_secret("MAIL_FROM", SMTP_USER)
 ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "admin123")
-GEMINI_KEY = get_secret("GEMINI_API_KEY")
+GROQ_KEY = get_secret("GROQ_API_KEY")
 
 # Pondération par criticité
 WEIGHTS = {"high": 3, "medium": 2, "low": 1}
@@ -194,29 +194,38 @@ def answer_order(v):
     return {"Bénin": 1, "Moyen": 2, "Grave": 3}.get(v, 0)
 
 
-def call_gemini(prompt: str, retries: int = 3) -> str:
-    """Appel à l'API Gemini avec retry automatique en cas de 429."""
-    if not GEMINI_KEY:
-        return "⚠️ Clé API Gemini non configurée."
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+def call_groq(prompt: str, retries: int = 3) -> str:
+    """Appel à l'API Groq — gratuit, rapide, fiable."""
+    if not GROQ_KEY:
+        return "⚠️ Clé API Groq non configurée."
     payload = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}]
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1500,
+        "temperature": 0.3,
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {GROQ_KEY}",
+        },
+        method="POST",
+    )
     for attempt in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
-            return result["candidates"][0]["content"]["parts"][0]["text"]
+            return result["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                wait = 20 * (attempt + 1)  # 20s, 40s, 60s
-                time.sleep(wait)
+                time.sleep(20 * (attempt + 1))
             else:
-                return f"⚠️ Erreur Gemini : {e}"
+                return f"⚠️ Erreur Groq : HTTP {e.code}"
         except Exception as e:
-            return f"⚠️ Erreur Gemini : {e}"
-    return "⚠️ Gemini indisponible après plusieurs tentatives. Réessayez dans une minute."
+            return f"⚠️ Erreur Groq : {e}"
+    return "⚠️ Groq indisponible après plusieurs tentatives."
 
 
 def analyze_and_recommend_with_ai(justifs: dict, result_data: dict) -> dict:
@@ -266,7 +275,7 @@ Réponds UNIQUEMENT en JSON sans markdown :
 Score justifications: 0=absente, 1=partielle, 2=correcte, 3=excellente.
 profil_global: 2 phrases. points_forts/faibles: concis. recommandation: 3 phrases bienveillantes en français.
 """
-    raw   = call_gemini(prompt)
+    raw   = call_groq(prompt)
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(clean)
