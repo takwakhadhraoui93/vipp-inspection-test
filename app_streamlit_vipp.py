@@ -228,7 +228,81 @@ def call_groq(prompt: str, retries: int = 3) -> str:
     return "⚠️ Groq indisponible après plusieurs tentatives."
 
 
-def analyze_and_recommend_with_ai(justifs: dict, result_data: dict) -> dict:
+def fallback_analysis(justifs: dict, result_data: dict) -> dict:
+    """Analyse locale sans IA — utilisée si Groq est indisponible."""
+    score_brut = result_data["score_brut"]
+    total      = result_data["total"]
+    danger     = result_data["score_danger"]
+    under      = result_data["sous_estimation"]
+    over       = result_data["sur_estimation"]
+    critical   = result_data["erreurs_critiques"]
+
+    # Profil global
+    if score_brut == total:
+        profil = "L'inspecteur maîtrise parfaitement la classification IQOA sur l'ensemble des thèmes."
+    elif danger >= 80 and critical == 0:
+        profil = "Bon niveau général avec une bonne détection des situations graves."
+    elif critical >= 3:
+        profil = "Des lacunes importantes sur les situations graves nécessitent une attention prioritaire."
+    elif under >= 4:
+        profil = "Tendance marquée à sous-estimer la gravité des désordres structurels."
+    else:
+        profil = f"Niveau intermédiaire avec {score_brut}/{total} bonnes réponses. Des points restent à consolider."
+
+    # Points forts / faibles basés sur les thèmes
+    theme_ok  = [t for t, v in result_data.get("theme_pct", {}).items() if v >= 75]
+    theme_nok = [t for t, v in result_data.get("theme_pct", {}).items() if v < 50]
+    forts     = ", ".join(theme_ok) if theme_ok else "Aucun thème dominant identifié."
+    faibles   = ", ".join(theme_nok) if theme_nok else "Aucune faiblesse majeure détectée."
+
+    # Recommandation
+    if score_brut == total:
+        reco = "Score parfait. Maintien des acquis par retour d'expérience recommandé."
+    elif critical >= 3:
+        reco = "Formation prioritaire sur la détection des désordres graves (Alerte). Révision du catalogue IQOA recommandée."
+    elif under >= 4:
+        reco = "Sensibilisation au risque de sous-estimation des désordres structurels. Étude de cas pratiques recommandée."
+    elif result_data["taux_reussite"] >= 90:
+        reco = "Niveau satisfaisant. Consolidation ciblée sur les thèmes : " + faibles
+    else:
+        reco = "Formation ciblée recommandée sur les thèmes suivants : " + faibles
+
+    # Justifications basiques
+    keywords_map = {
+        1:  ["fissure", "cambrure", "hauteur", "grave", "poutre"],
+        4:  ["fracture", "talon", "gel", "câble", "rouille", "corrosion"],
+        5:  ["cachetage", "ancrage", "eau", "rouille", "câble", "efflorescence"],
+        6:  ["fissure", "oblique", "appui", "tranchant", "moment", "précontrainte"],
+        9:  ["lacune", "talon", "armature", "rupture", "section"],
+        12: ["fissure", "longitudinale", "hourdis", "corrosion", "eau", "câble"],
+    }
+    justif_results = {}
+    scores = []
+    for qid, kws in keywords_map.items():
+        txt   = (justifs.get(qid, "") or "").lower()
+        found = [k for k in kws if k in txt]
+        s     = min(3, len(found))
+        scores.append(s)
+        if s == 0:
+            comment = "Justification absente ou hors sujet."
+        elif s == 1:
+            comment = f"Partielle — mentionne : {', '.join(found)}."
+        elif s == 2:
+            comment = f"Correcte — identifie : {', '.join(found)}."
+        else:
+            comment = f"Excellente — couvre bien les éléments clés : {', '.join(found)}."
+        justif_results[str(qid)] = {"score": s, "commentaire": comment}
+
+    score_moyen = round(sum(scores) / len(scores), 2) if scores else 0.0
+
+    return {
+        "justifications": justif_results,
+        "score_moyen": score_moyen,
+        "profil_global": profil,
+        "points_forts": forts,
+        "points_faibles": faibles,
+        "recommandation": reco,
+    }
     """
     Un seul appel Gemini :
     - analyse toutes les réponses (bonnes et mauvaises)
@@ -276,6 +350,9 @@ Score justifications: 0=absente, 1=partielle, 2=correcte, 3=excellente.
 profil_global: 2 phrases. points_forts/faibles: concis. recommandation: 3 phrases bienveillantes en français.
 """
     raw   = call_groq(prompt)
+    if raw.startswith("⚠️"):
+        # Groq indisponible → fallback analyse locale
+        return fallback_analysis(justifs, result_data)
     clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         return json.loads(clean)
@@ -335,6 +412,17 @@ def analyze_submission(nom, prenom, email):
     score_precision = round((1 - under_est / max(total_errors, 1)) * 100, 1) if total_errors else 100.0
     taux            = round(score_brut / total * 100, 1)
 
+    # Calcul pourcentages par thème
+    theme_pct = {}
+    for q in QUESTIONS:
+        t = q["theme"]
+        if t not in theme_pct:
+            theme_pct[t] = {"correct": 0, "total": 0}
+        theme_pct[t]["total"] += 1
+        if st.session_state.answers.get(q["id"], "Grave") == q["correct"]:
+            theme_pct[t]["correct"] += 1
+    theme_pct = {t: round(v["correct"]/v["total"]*100, 1) for t, v in theme_pct.items()}
+
     # Un seul appel IA — toutes les réponses + justifications + recommandation
     ai_result = analyze_and_recommend_with_ai(st.session_state.justifs, {
         "score_brut": score_brut, "total": total,
@@ -345,6 +433,7 @@ def analyze_submission(nom, prenom, email):
         "erreurs_critiques": critical_errors,
         "details_erreurs": " | ".join(erreurs_details) or "Aucune erreur.",
         "all_answers": st.session_state.answers,
+        "theme_pct": theme_pct,
     })
     score_justifs    = ai_result.get("score_moyen", 0.0)
     synthese_justifs = ai_result.get("profil_global", "")
